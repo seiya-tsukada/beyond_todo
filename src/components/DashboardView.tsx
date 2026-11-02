@@ -22,6 +22,7 @@ import {
   AIInsight,
 } from '../types/index.ts';
 import { NavTab } from './Navbar.tsx';
+import { MAX_ACTIVE_PRIORITIES_PER_WEEK } from '../constants.ts';
 
 interface DashboardViewProps {
   data: DashboardOverview | null;
@@ -120,7 +121,7 @@ export function DashboardView({
         </div>
 
         <div className="space-y-1">
-          <span className="text-xs text-zinc-500">今週の最優先（Top 3）</span>
+          <span className="text-xs text-zinc-500">今週の最優先</span>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold tracking-tight text-zinc-900 tabular-nums">
               {metrics.completedPrioritiesCount}/{priorities.length}
@@ -284,7 +285,7 @@ export function DashboardView({
           </div>
         </div>
 
-        {/* Pillar B: Current Priorities (This Week Top 3 Focus) */}
+        {/* Pillar B: Current Priorities (This Week Focus) */}
         <div className="bg-white rounded-xl p-6 border border-zinc-200 flex flex-col justify-between">
           <div className="space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
@@ -313,8 +314,8 @@ export function DashboardView({
             </div>
 
             <div className="flex items-center justify-between text-xs text-zinc-500">
-              <span>認知負荷を減らし行動を研ぎ澄ますため、週に最大3件まで厳選。</span>
-              <span className="font-mono text-zinc-700 font-semibold">{priorities.length} / 3件</span>
+              <span>認知負荷を減らし行動を研ぎ澄ますため、未完了は週に最大{MAX_ACTIVE_PRIORITIES_PER_WEEK}件まで厳選。</span>
+              <span className="font-mono text-zinc-700 font-semibold">{priorities.filter((p) => p.status !== 'Completed').length} / {MAX_ACTIVE_PRIORITIES_PER_WEEK}件</span>
             </div>
 
             <div className="space-y-3">
@@ -383,7 +384,7 @@ export function DashboardView({
                     onClick={() => onOpenQuickAdd('priority')}
                     className="mt-2 text-xs font-semibold text-zinc-900 hover:underline inline-block"
                   >
-                    最優先事項を1件登録する（最大3件）
+                    最優先事項を1件登録する（最大{MAX_ACTIVE_PRIORITIES_PER_WEEK}件）
                   </button>
                 </div>
               )}

@@ -1,23 +1,32 @@
-import React, { useState } from 'react';
-import { Compass, X, Mail, Lock, User as UserIcon, ArrowRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Compass, Mail, Lock, User as UserIcon } from 'lucide-react';
 import { api } from '../services/api.ts';
 import { User } from '../types/index.ts';
 import { useToast } from './Toast.tsx';
 
+export type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
+
 interface AuthModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  initialMode?: AuthMode;
+  /** Token from the password-reset e-mail link (required for 'reset' mode) */
+  resetToken?: string | null;
   onSuccess: (user: User) => void;
+  onResetComplete?: () => void;
 }
 
-export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
+export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess, onResetComplete }: AuthModalProps) {
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(false);
   const { showToast } = useToast();
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
 
   if (!isOpen) return null;
 
@@ -30,15 +39,20 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         const res = await api.login(email, password);
         showToast('ログインしました');
         onSuccess(res.user);
-        onClose();
       } else if (mode === 'register') {
-        const res = await api.register(name, email, title);
+        const res = await api.register({ name, email, password, title: title || undefined });
         showToast(res.message || 'アカウントを登録しました');
         onSuccess(res.user);
-        onClose();
       } else if (mode === 'forgot') {
         const res = await api.forgotPassword(email);
         showToast(res.message);
+        setMode('login');
+      } else if (mode === 'reset') {
+        if (!resetToken) throw new Error('再設定リンクが無効です。もう一度お手続きください。');
+        const res = await api.resetPassword(resetToken, password);
+        showToast(res.message);
+        setPassword('');
+        onResetComplete?.();
         setMode('login');
       }
     } catch (err: any) {
@@ -48,30 +62,9 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     }
   };
 
-  const handleQuickDemoLogin = async () => {
-    setLoading(true);
-    try {
-      const res = await api.login('founder@beyondtodo.app', 'password123');
-      showToast('デモ起業家アカウントでログインしました');
-      onSuccess(res.user);
-      onClose();
-    } catch (err: any) {
-      showToast(err.message || 'ログインに失敗しました', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl max-w-md w-full p-6 sm:p-8 shadow-xl border border-zinc-200 animate-in fade-in zoom-in-95 duration-150 relative">
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-700 p-1 rounded-md"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
         <div className="text-center space-y-2 mb-6">
           <div className="w-10 h-10 rounded-xl bg-zinc-900 text-white flex items-center justify-center mx-auto shadow-sm">
             <Compass className="w-5 h-5 text-zinc-100" />
@@ -80,11 +73,13 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             {mode === 'login' && 'Beyond TODO. へログイン'}
             {mode === 'register' && 'アカウントを新規作成'}
             {mode === 'forgot' && 'パスワードの再設定'}
+            {mode === 'reset' && '新しいパスワードの設定'}
           </h2>
           <p className="text-xs text-zinc-500">
             {mode === 'login' && '自分の意思で、人生を動かすパーソナルマネジメント'}
             {mode === 'register' && '課題・優先事項・興味関心を統合管理するワークスペース'}
             {mode === 'forgot' && '登録したメールアドレス宛に再設定リンクを送信します'}
+            {mode === 'reset' && '8文字以上の新しいパスワードを入力してください'}
           </p>
         </div>
 
@@ -123,22 +118,24 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             </>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-zinc-700 mb-1">
-              メールアドレス <span className="text-rose-500">*</span>
-            </label>
-            <div className="relative">
-              <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-              <input
-                type="email"
-                required
-                placeholder="founder@beyondtodo.app"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-zinc-300 rounded-lg focus:ring-1 focus:ring-zinc-900 focus:outline-none"
-              />
+          {mode !== 'reset' && (
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                メールアドレス <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="email"
+                  required
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-zinc-300 rounded-lg focus:ring-1 focus:ring-zinc-900 focus:outline-none"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {mode !== 'forgot' && (
             <div>
@@ -161,7 +158,9 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
                 <input
                   type="password"
                   required
-                  placeholder="••••••••"
+                  minLength={mode === 'login' ? 1 : 8}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  placeholder={mode === 'login' ? '••••••••' : '8文字以上'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-sm border border-zinc-300 rounded-lg focus:ring-1 focus:ring-zinc-900 focus:outline-none"
@@ -175,21 +174,13 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             disabled={loading}
             className="w-full py-2.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-50 mt-2"
           >
-            {loading ? '処理中...' : mode === 'login' ? 'ログインする' : mode === 'register' ? 'アカウントを作成' : '再設定メールを送信'}
+            {loading
+              ? '処理中...'
+              : { login: 'ログインする', register: 'アカウントを作成', forgot: '再設定メールを送信', reset: 'パスワードを変更する' }[mode]}
           </button>
         </form>
 
-        {/* Demo Fast Login */}
-        <div className="mt-4 pt-4 border-t border-zinc-100 space-y-3 text-center">
-          <button
-            type="button"
-            onClick={handleQuickDemoLogin}
-            disabled={loading}
-            className="w-full py-2 text-xs font-medium text-zinc-700 hover:text-zinc-950 bg-zinc-100 hover:bg-zinc-200 rounded-lg transition-colors cursor-pointer"
-          >
-            起業家デモアカウントですぐ試す
-          </button>
-
+        <div className="mt-4 pt-4 border-t border-zinc-100 text-center">
           <div className="text-xs text-zinc-500">
             {mode === 'login' ? (
               <span>

@@ -30,6 +30,7 @@ import {
   StakeholderRelationship,
 } from '../types/index.ts';
 import { useToast } from './Toast.tsx';
+import { MAX_ACTIVE_PRIORITIES_PER_WEEK } from '../constants.ts';
 
 export type MySpaceSubTab = 'priorities' | 'challenges' | 'interests' | 'stakeholders' | 'decisions';
 
@@ -296,8 +297,8 @@ export function MySpaceView({
       });
     } else {
       const activeCount = priorities.filter((pr) => pr.status !== 'Completed').length;
-      if (activeCount >= 5) {
-        showToast('進行中の最優先事項は週に最大5件までです。', 'info');
+      if (activeCount >= MAX_ACTIVE_PRIORITIES_PER_WEEK) {
+        showToast(`未完了の最優先事項は週に最大${MAX_ACTIVE_PRIORITIES_PER_WEEK}件までです。`, 'info');
         return;
       }
       setEditingPriority(null);
@@ -522,7 +523,7 @@ export function MySpaceView({
           {activeTab === 'priorities' && (
             <button
               onClick={() => handleOpenPriorityModal()}
-              disabled={activePriorities.length >= 5}
+              disabled={activePriorities.length >= MAX_ACTIVE_PRIORITIES_PER_WEEK}
               className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-40"
             >
               <Plus className="w-4 h-4" />
@@ -661,7 +662,7 @@ export function MySpaceView({
               <span className="font-semibold text-zinc-900">Priorities</span>
               <span className="text-zinc-400">·</span>
               <span className="text-zinc-600">
-                Focus画面にリアルタイム参照。週に最大5件まで厳選。完了（アーカイブ）はワンクリックで切り替え。
+                Focus画面にリアルタイム参照。未完了は週に最大{MAX_ACTIVE_PRIORITIES_PER_WEEK}件まで厳選。完了（アーカイブ）はワンクリックで切り替え。
               </span>
             </div>
 

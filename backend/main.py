@@ -1,61 +1,44 @@
-"""
-Beyond TODO. - Python FastAPI Backend Reference (Vercel Functions Ready)
-Implements all Personal Management REST APIs, Argon2id auth, and repository pattern.
-"""
+"""Beyond TODO. API (FastAPI). Served by Vercel Python Functions via api/index.py."""
 
-from fastapi import FastAPI, HTTPException, Header, Depends
-from pydantic import BaseModel, EmailStr
-from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
-import os
+from __future__ import annotations
 
-app = FastAPI(title="Beyond TODO. API", version="1.0.0")
+import logging
+from urllib.parse import urlsplit
 
-class UserRegister(BaseModel):
-    email: EmailStr
-    password: str
-    name: str
-    title: Optional[str] = None
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
-class ChallengeCreate(BaseModel):
-    title: str
-    description: Optional[str] = ""
-    status: Optional[str] = "Open"
-    importance: Optional[str] = "High"
+from .errors import install_error_handlers
+from .routers import auth, cron, overview, workspace
 
-class PriorityCreate(BaseModel):
-    title: str
-    description: Optional[str] = ""
-    reason: str
-    status: Optional[str] = "Not Started"
-    target_week: str
-    challenge_id: Optional[str] = None
+logging.basicConfig(level=logging.INFO)
 
-class InterestCreate(BaseModel):
-    title: str
-    description: Optional[str] = ""
-    category: Optional[str] = "General"
-    status: Optional[str] = "Interested"
+app = FastAPI(title="Beyond TODO. API", version="2.0.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
+install_error_handlers(app)
 
-class StakeholderCreate(BaseModel):
-    name: str
-    relationship: Optional[str] = "Customer"
-    description: Optional[str] = ""
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
-class WeeklyReviewCreate(BaseModel):
-    week_start: str
-    week_end: str
-    summary: str
-    completed_priorities: List[str] = []
-    incomplete_priorities: List[str] = []
-    personal_reflection: str = ""
-    decision_reflection: str = ""
-    next_week_actions: List[str] = []
-    answers: Dict[str, str] = {}
+
+@app.middleware("http")
+async def reject_cross_site_writes(request: Request, call_next):
+    """CSRF guard: state-changing requests must come from the same origin as the API.
+
+    The session cookie is SameSite=Lax as well; this blocks the remaining cases.
+    """
+    origin = request.headers.get("origin")
+    if request.method in UNSAFE_METHODS and origin:
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        if urlsplit(origin).netloc != host:
+            return JSONResponse({"error": "不正なリクエスト元です。"}, status_code=403)
+    return await call_next(request)
+
 
 @app.get("/api/health")
-def health_check():
-    return {"status": "ok", "app": "Beyond TODO. FastAPI Backend", "mode": os.getenv("APP_MODE", "mock")}
+def health():
+    return {"status": "ok"}
 
-# Note: In development inside this applet, the Express server provides the live proxy & Vite integration.
-# When deployed to Vercel with Python functions, this FastAPI app serves /api/* endpoints directly.
+
+app.include_router(auth.router)
+app.include_router(workspace.router)
+app.include_router(overview.router)
+app.include_router(cron.router)
