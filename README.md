@@ -40,7 +40,7 @@ supabase/migrations/         DB スキーマ
   - 週次レビューのリマインド: 日曜 18:00 JST（Vercel Cron `0 9 * * 0` UTC）。メール確認済み・設定でON・その週の振り返り未作成のユーザーにのみ送信し、同じ週に二重送信しません。
 - ダッシュボード表示時はルールベースのインサイト、「再分析」ボタンで Gemini を呼び出します。
 
-## セットアップ
+## 本番セットアップ
 
 ### 1. Supabase
 
@@ -48,11 +48,53 @@ supabase/migrations/         DB スキーマ
 2. Project Settings → Database → Connection string の **Transaction pooler**（ポート 6543）を `DATABASE_URL` に設定。
 3. `beyond_todo` スキーマは API（PostgREST）に公開しないでください（Exposed schemas に追加不要）。
 
-### 2. 環境変数
+### 2. 環境変数（Vercel / Docker を使わないローカル実行）
 
 `.env.example` を `.env.local` にコピーして値を設定します。Vercel には同じ変数を Project Settings → Environment Variables に設定してください（`APP_URL` は本番URL、`CRON_SECRET` は十分に長いランダム文字列）。
 
-### 3. ローカル開発
+## ローカル開発（Docker Compose・推奨）
+
+外部サービスはすべてローカルの代替に置き換わるため、アカウントやキーなしで一通り動きます。
+
+```bash
+docker compose up --build
+```
+
+| URL | 内容 |
+| --- | --- |
+| http://localhost:5173 | アプリ（`/api` は API コンテナへプロキシ） |
+| http://localhost:5173/api/docs | API ドキュメント（FastAPI） |
+| http://localhost:8025 | Mailpit：送信されたメールの確認（確認リンク・再設定リンクもここから開けます） |
+| `localhost:54322` | Postgres（user / password: `postgres`、DB: `beyond_todo`） |
+
+| 本番の依存 | ローカルでの代替 |
+| --- | --- |
+| Supabase Postgres | `db`（postgres:17）。`migrate` が `supabase/migrations` の未適用分を起動時に適用 |
+| Resend | `resend-mock`（Resend API 互換のモック）→ `mailpit` へ SMTP 転送。アプリ側は本番と同じ Resend SDK 経由で送信 |
+| Gemini | キー未設定のためルールベースのインサイト（`GEMINI_API_KEY` を渡せば実 API） |
+| Vercel Cron | 手動実行（下記） |
+
+- `src/` と `backend/` の変更は自動で反映されます（Vite HMR / uvicorn reload）。
+- `package.json` や `requirements*.txt` を変えたら `docker compose up --build` で再ビルドしてください。
+- ポートが衝突する場合は `WEB_PORT` / `MAIL_UI_PORT` / `DB_PORT` で変更できます（例: `WEB_PORT=5174 docker compose up`）。
+
+よく使うコマンド:
+
+```bash
+curl -H "Authorization: Bearer local-cron-secret" http://localhost:5173/api/cron/weekly-review-reminder
+```
+
+```bash
+docker compose run --rm --no-deps -e TEST_DATABASE_URL=postgresql://postgres:postgres@db:5432/beyond_todo_test api python -m pytest backend/tests
+```
+
+```bash
+docker compose down -v
+```
+
+1つ目は週次リマインドの手動実行、2つ目はバックエンドの結合テスト（専用DB `beyond_todo_test` を使用し、開発データには触れません）、3つ目はDBを含めた全データの削除です。
+
+## ローカル開発（Docker なし）
 
 ```bash
 npm install
@@ -62,7 +104,7 @@ npm install
 uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt
 ```
 
-API（ポート 8000）とフロント（ポート 5173、`/api` を API へプロキシ）を別々に起動します。
+`.env.local` の `DATABASE_URL` に Postgres を用意したうえで、API（ポート 8000、`API_PORT` で変更可）とフロント（ポート 5173）を別々に起動します。
 
 ```bash
 npm run dev:api
@@ -72,23 +114,30 @@ npm run dev:api
 npm run dev
 ```
 
-`RESEND_API_KEY` 未設定の場合、メールは送信されず API のログに出力されます（確認リンクもログから開けます）。
+`RESEND_API_KEY` 未設定の場合、メールは送信されず API のログに出力されます。
 
-### 4. テスト・チェック
+## テスト・チェック
 
 ```bash
 npm run lint
 ```
 
-バックエンドの結合テストは使い捨ての Postgres が必要です（`beyond_todo` スキーマを毎回作り直します）。
-
 ```bash
-docker run -d --rm --name beyond-todo-test-pg -e POSTGRES_PASSWORD=test -p 54329:5432 postgres:17-alpine
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:54322/beyond_todo_test npm run test:api
 ```
 
-```bash
-TEST_DATABASE_URL=postgresql://postgres:test@localhost:54329/postgres npm run test:api
-```
+（2つ目は Docker Compose の DB を使って、ホストの venv からテストする場合）
+
+## 開発フロー（ブランチ戦略）
+
+GitHub Flow + Vercel Preview を基本にします。
+
+- `main` は常にデプロイ可能な状態に保ち、Vercel の Production に自動デプロイ。直接 push はしない（Branch protection で PR 必須にする）。
+- 作業は `main` から短命ブランチを切る。命名: `feat/…`（機能）, `fix/…`（不具合）, `chore/…`（設定・依存・環境）, `docs/…`, `refactor/…`。
+- PR ごとに Vercel の Preview Deployment で動作確認。Preview 用の環境変数（別の Supabase プロジェクト or ブランチ、Resend のテスト送信元など）は Vercel の Preview 環境に分けて設定し、本番データに触れないようにする。
+- マージは Squash merge、マージ後はブランチを削除。
+- DB 変更は `supabase/migrations/` に新しいファイルを追加する形で行い（既存ファイルは書き換えない）、本番への適用はマージ後に `supabase db push`（将来的には CI から）。
+- 本番とは別に常設の検証環境が必要になった段階で、`develop` ブランチではなく「Vercel Preview + Supabase Branching」での検証を優先し、ブランチ構成はシンプルに保つ。
 
 ## デプロイ
 

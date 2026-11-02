@@ -1,0 +1,116 @@
+# Local development stack: `docker compose up --build`
+#
+#   http://localhost:5173           app (Vite, proxies /api to the api service)
+#   http://localhost:5173/api/docs  API docs (FastAPI)
+#   http://localhost:8025           Mailpit: e-mails "sent" through the Resend mock
+#   localhost:54322                 Postgres (stand-in for Supabase)
+#
+# Host ports can be changed with WEB_PORT / MAIL_UI_PORT / DB_PORT.
+
+name: beyond-todo
+
+x-db-env: &db-env
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_DB: beyond_todo
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment: *db-env
+    ports:
+      - "${DB_PORT:-54322}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./docker/db/init.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d beyond_todo"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Applies supabase/migrations that are not yet applied, then exits
+  migrate:
+    image: postgres:17-alpine
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: beyond_todo
+    volumes:
+      - ./supabase/migrations:/migrations:ro
+      - ./docker/db/migrate.sh:/migrate.sh:ro
+    entrypoint: ["sh", "/migrate.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "${MAIL_UI_PORT:-8025}:8025"
+
+  # Mock of the Resend HTTP API; relays messages to Mailpit over SMTP
+  resend-mock:
+    image: python:3.12-alpine
+    command: ["python", "/app/server.py"]
+    environment:
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+    volumes:
+      - ./docker/resend-mock/server.py:/app/server.py:ro
+    depends_on:
+      - mailpit
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/beyond_todo
+      APP_URL: http://localhost:${WEB_PORT:-5173}
+      COOKIE_SECURE: "false"
+      APP_TIMEZONE: Asia/Tokyo
+      RESEND_API_KEY: re_local_mock
+      RESEND_API_URL: http://resend-mock:3000
+      MAIL_FROM: "Beyond TODO. <noreply@beyond-todo.local>"
+      # Leave empty to use the rule-based insights; set to try Gemini locally
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CRON_SECRET: local-cron-secret
+      WATCHFILES_FORCE_POLLING: "true"
+    # Not published: reach it through the web proxy (http://localhost:5173/api)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - ./backend:/app/backend
+      - ./api:/app/api
+      - ./supabase:/app/supabase:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      resend-mock:
+        condition: service_started
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    environment:
+      API_PROXY_TARGET: http://api:8000
+      VITE_USE_POLLING: "true"
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    volumes:
+      - ./src:/app/src
+      - ./index.html:/app/index.html:ro
+      - ./vite.config.ts:/app/vite.config.ts:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db-data:
