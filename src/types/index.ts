@@ -13,8 +13,9 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  title?: string;
+  title?: string | null;
   email_verified_at: string | null;
+  notify_weekly_review: boolean;
   created_at: string;
 }
 
@@ -153,4 +154,5 @@ export interface QuickMemo {
   tags?: string[];
   converted_to?: 'challenge' | 'priority' | 'interest' | 'stakeholder' | null;
   created_at: string;
+  updated_at: string;
 }

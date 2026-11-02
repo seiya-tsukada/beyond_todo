@@ -1,6 +1,7 @@
 /**
  * Beyond TODO. Client API Service
- * Interacts with /api endpoints
+ * Talks to the Python API under /api. Authentication uses an httpOnly session
+ * cookie set by the server, so no token is handled in the browser.
  */
 
 import {
@@ -17,32 +18,24 @@ import {
   QuickMemo,
 } from '../types/index.ts';
 
-const TOKEN_KEY = 'beyond_todo_token';
-
-export function getAuthToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY) || 'demo-session-token-beyond-todo';
+export class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
 }
 
-export function setAuthToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-}
+let onUnauthorized: (() => void) | null = null;
 
-export function removeAuthToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
+/** Called whenever the server reports the session is missing or expired. */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const token = getAuthToken();
   const headers = new Headers(options.headers || {});
-  headers.set('Content-Type', 'application/json');
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
+  if (options.body) headers.set('Content-Type', 'application/json');
 
-  const response = await fetch(endpoint, {
-    ...options,
-    headers,
-  });
+  const response = await fetch(endpoint, { ...options, headers, credentials: 'same-origin' });
 
   if (!response.ok) {
     let errorMsg = 'リクエストに失敗しました';
@@ -52,89 +45,95 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     } catch {
       // ignore
     }
-    throw new Error(errorMsg);
+    if (response.status === 401 && !endpoint.startsWith('/api/auth/')) onUnauthorized?.();
+    throw new ApiError(errorMsg, response.status);
   }
 
   return response.json();
 }
 
+function post<T>(endpoint: string, body?: unknown): Promise<T> {
+  return request<T>(endpoint, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
+}
+
+function put<T>(endpoint: string, body: unknown): Promise<T> {
+  return request<T>(endpoint, { method: 'PUT', body: JSON.stringify(body) });
+}
+
+function del(endpoint: string): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(endpoint, { method: 'DELETE' });
+}
+
+type Message = { success: boolean; message: string };
+
 export const api = {
   // Auth
-  async login(email: string, password?: string): Promise<{ token: string; user: User }> {
-    const res = await request<{ token: string; user: User }>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    setAuthToken(res.token);
-    return res;
+  login(email: string, password: string): Promise<{ user: User }> {
+    return post('/api/auth/login', { email, password });
   },
 
-  async register(name: string, email: string, title?: string): Promise<{ token: string; user: User; message: string }> {
-    const res = await request<{ token: string; user: User; message: string }>('/api/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({ name, email, title }),
-    });
-    setAuthToken(res.token);
-    return res;
+  register(data: { name: string; email: string; password: string; title?: string }): Promise<{ user: User; message: string }> {
+    return post('/api/auth/register', data);
   },
 
-  async getMe(): Promise<{ user: User }> {
-    return request<{ user: User }>('/api/auth/me');
+  getMe(): Promise<{ user: User }> {
+    return request('/api/auth/me');
   },
 
-  async logout(): Promise<void> {
-    try {
-      await request('/api/auth/logout', { method: 'POST' });
-    } finally {
-      removeAuthToken();
-    }
+  updateMe(data: { name?: string; title?: string; notify_weekly_review?: boolean }): Promise<{ user: User }> {
+    return request('/api/auth/me', { method: 'PATCH', body: JSON.stringify(data) });
   },
 
-  async forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
-    return request('/api/auth/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    });
+  logout(): Promise<{ success: boolean }> {
+    return post('/api/auth/logout');
+  },
+
+  verifyEmail(token: string): Promise<{ user: User | null; message: string }> {
+    return post('/api/auth/verify-email', { token });
+  },
+
+  resendVerificationEmail(): Promise<Message> {
+    return post('/api/auth/verify-email/resend');
+  },
+
+  forgotPassword(email: string): Promise<Message> {
+    return post('/api/auth/forgot-password', { email });
+  },
+
+  resetPassword(token: string, password: string): Promise<Message> {
+    return post('/api/auth/reset-password', { token, password });
   },
 
   // Dashboard Overview
-  async getDashboardOverview(week?: string): Promise<DashboardOverview> {
+  getDashboardOverview(week?: string): Promise<DashboardOverview> {
     const query = week ? `?week=${encodeURIComponent(week)}` : '';
-    return request<DashboardOverview>(`/api/dashboard/overview${query}`);
+    return request(`/api/dashboard/overview${query}`);
   },
 
   // Challenges (Problems)
-  async getChallenges(): Promise<Challenge[]> {
-    return request<Challenge[]>('/api/challenges');
+  getChallenges(): Promise<Challenge[]> {
+    return request('/api/challenges');
   },
 
-  async createChallenge(data: { title: string; description?: string; status?: string; importance?: string }): Promise<Challenge> {
-    return request<Challenge>('/api/challenges', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  createChallenge(data: { title: string; description?: string; status?: string; importance?: string }): Promise<Challenge> {
+    return post('/api/challenges', data);
   },
 
-  async updateChallenge(id: string, data: Partial<Challenge>): Promise<Challenge> {
-    return request<Challenge>(`/api/challenges/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  updateChallenge(id: string, data: Partial<Challenge>): Promise<Challenge> {
+    return put(`/api/challenges/${id}`, data);
   },
 
-  async deleteChallenge(id: string): Promise<{ success: boolean }> {
-    return request<{ success: boolean }>(`/api/challenges/${id}`, {
-      method: 'DELETE',
-    });
+  deleteChallenge(id: string) {
+    return del(`/api/challenges/${id}`);
   },
 
   // Priorities
-  async getPriorities(targetWeek?: string): Promise<Priority[]> {
+  getPriorities(targetWeek?: string): Promise<Priority[]> {
     const query = targetWeek ? `?target_week=${encodeURIComponent(targetWeek)}` : '';
-    return request<Priority[]>(`/api/priorities${query}`);
+    return request(`/api/priorities${query}`);
   },
 
-  async createPriority(data: {
+  createPriority(data: {
     title: string;
     description?: string;
     reason: string;
@@ -142,166 +141,115 @@ export const api = {
     target_week?: string;
     challenge_id?: string | null;
   }): Promise<Priority> {
-    return request<Priority>('/api/priorities', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    return post('/api/priorities', data);
   },
 
-  async updatePriority(id: string, data: Partial<Priority>): Promise<Priority> {
-    return request<Priority>(`/api/priorities/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  updatePriority(id: string, data: Partial<Priority>): Promise<Priority> {
+    return put(`/api/priorities/${id}`, data);
   },
 
-  async deletePriority(id: string): Promise<{ success: boolean }> {
-    return request<{ success: boolean }>(`/api/priorities/${id}`, {
-      method: 'DELETE',
-    });
+  deletePriority(id: string) {
+    return del(`/api/priorities/${id}`);
   },
 
   // Interests
-  async getInterests(): Promise<Interest[]> {
-    return request<Interest[]>('/api/interests');
+  getInterests(): Promise<Interest[]> {
+    return request('/api/interests');
   },
 
-  async createInterest(data: { title: string; description?: string; category?: string; status?: string }): Promise<Interest> {
-    return request<Interest>('/api/interests', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  createInterest(data: { title: string; description?: string; category?: string; status?: string; who?: string }): Promise<Interest> {
+    return post('/api/interests', data);
   },
 
-  async updateInterest(id: string, data: Partial<Interest>): Promise<Interest> {
-    return request<Interest>(`/api/interests/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  updateInterest(id: string, data: Partial<Interest>): Promise<Interest> {
+    return put(`/api/interests/${id}`, data);
   },
 
-  async deleteInterest(id: string): Promise<{ success: boolean }> {
-    return request<{ success: boolean }>(`/api/interests/${id}`, {
-      method: 'DELETE',
-    });
+  deleteInterest(id: string) {
+    return del(`/api/interests/${id}`);
   },
 
   // Stakeholders
-  async getStakeholders(): Promise<Stakeholder[]> {
-    return request<Stakeholder[]>('/api/stakeholders');
+  getStakeholders(): Promise<Stakeholder[]> {
+    return request('/api/stakeholders');
   },
 
-  async createStakeholder(data: { name: string; relationship?: string; description?: string }): Promise<Stakeholder> {
-    return request<Stakeholder>('/api/stakeholders', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  createStakeholder(data: { name: string; relationship?: string; description?: string }): Promise<Stakeholder> {
+    return post('/api/stakeholders', data);
   },
 
-  async updateStakeholder(id: string, data: Partial<Stakeholder>): Promise<Stakeholder> {
-    return request<Stakeholder>(`/api/stakeholders/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  updateStakeholder(id: string, data: Partial<Stakeholder>): Promise<Stakeholder> {
+    return put(`/api/stakeholders/${id}`, data);
   },
 
-  async deleteStakeholder(id: string): Promise<{ success: boolean }> {
-    return request<{ success: boolean }>(`/api/stakeholders/${id}`, {
-      method: 'DELETE',
-    });
+  deleteStakeholder(id: string) {
+    return del(`/api/stakeholders/${id}`);
   },
 
-  async createStakeholderInterest(
+  createStakeholderInterest(
     stakeholderId: string,
     data: { title: string; description?: string; importance?: string; status?: string }
   ): Promise<StakeholderInterest> {
-    return request<StakeholderInterest>(`/api/stakeholders/${stakeholderId}/interests`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    return post(`/api/stakeholders/${stakeholderId}/interests`, data);
   },
 
-  async updateStakeholderInterest(id: string, data: Partial<StakeholderInterest>): Promise<StakeholderInterest> {
-    return request<StakeholderInterest>(`/api/stakeholders/unused/interests/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  updateStakeholderInterest(id: string, data: Partial<StakeholderInterest>): Promise<StakeholderInterest> {
+    return put(`/api/stakeholder-interests/${id}`, data);
   },
 
-  async deleteStakeholderInterest(id: string): Promise<{ success: boolean }> {
-    return request<{ success: boolean }>(`/api/stakeholders/unused/interests/${id}`, {
-      method: 'DELETE',
-    });
+  deleteStakeholderInterest(id: string) {
+    return del(`/api/stakeholder-interests/${id}`);
   },
 
   // Weekly Reviews
-  async getReviews(): Promise<WeeklyReview[]> {
-    return request<WeeklyReview[]>('/api/reviews');
+  getReviews(): Promise<WeeklyReview[]> {
+    return request('/api/reviews');
   },
 
-  async getLatestReview(): Promise<WeeklyReview | null> {
-    return request<WeeklyReview | null>('/api/reviews/latest');
+  getLatestReview(): Promise<WeeklyReview | null> {
+    return request('/api/reviews/latest');
   },
 
-  async createReview(data: Partial<WeeklyReview>): Promise<WeeklyReview> {
-    return request<WeeklyReview>('/api/reviews', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  createReview(data: Partial<WeeklyReview>): Promise<WeeklyReview> {
+    return post('/api/reviews', data);
   },
 
   // Decision Logs
-  async getDecisionLogs(): Promise<DecisionLog[]> {
-    return request<DecisionLog[]>('/api/decision-logs');
+  getDecisionLogs(): Promise<DecisionLog[]> {
+    return request('/api/decision-logs');
   },
 
-  async createDecisionLog(data: { priority_id?: string | null; decision: string; reason: string; outcome?: string }): Promise<DecisionLog> {
-    return request<DecisionLog>('/api/decision-logs', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  createDecisionLog(data: { priority_id?: string | null; decision: string; reason: string; outcome?: string }): Promise<DecisionLog> {
+    return post('/api/decision-logs', data);
   },
 
-  async deleteDecisionLog(id: string): Promise<{ success: boolean }> {
-    return request<{ success: boolean }>(`/api/decision-logs/${id}`, {
-      method: 'DELETE',
-    });
+  deleteDecisionLog(id: string) {
+    return del(`/api/decision-logs/${id}`);
   },
 
   // AI Insights
-  async analyzeInsights(userQuery?: string): Promise<{ insights: AIInsight[] }> {
-    return request<{ insights: AIInsight[] }>('/api/insights/analyze', {
-      method: 'POST',
-      body: JSON.stringify({ userQuery }),
-    });
+  analyzeInsights(userQuery?: string): Promise<{ insights: AIInsight[] }> {
+    return post('/api/insights/analyze', { userQuery });
   },
 
   // Quick Memos (Meeting scratchpad & instant capture)
-  async getQuickMemos(): Promise<QuickMemo[]> {
-    return request<QuickMemo[]>('/api/memos');
+  getQuickMemos(): Promise<QuickMemo[]> {
+    return request('/api/memos');
   },
 
-  async createQuickMemo(content: string, tags?: string[]): Promise<QuickMemo> {
-    return request<QuickMemo>('/api/memos', {
-      method: 'POST',
-      body: JSON.stringify({ content, tags }),
-    });
+  createQuickMemo(content: string, tags?: string[]): Promise<QuickMemo> {
+    return post('/api/memos', { content, tags: tags || [] });
   },
 
-  async updateQuickMemo(id: string, data: { content?: string; tags?: string[] }): Promise<QuickMemo> {
-    return request<QuickMemo>(`/api/memos/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
+  updateQuickMemo(id: string, data: { content?: string; tags?: string[] }): Promise<QuickMemo> {
+    return put(`/api/memos/${id}`, data);
   },
 
-  async deleteQuickMemo(id: string): Promise<{ success: boolean }> {
-    return request<{ success: boolean }>(`/api/memos/${id}`, {
-      method: 'DELETE',
-    });
+  deleteQuickMemo(id: string) {
+    return del(`/api/memos/${id}`);
   },
 
-  async convertQuickMemo(
+  convertQuickMemo(
     id: string,
     data: {
       targetType: 'challenge' | 'priority' | 'interest' | 'stakeholder';
@@ -313,35 +261,21 @@ export const api = {
       importance?: string;
       stakeholder_id?: string;
     }
-  ): Promise<{ success: boolean; createdEntity: any; convertedType: string }> {
-    return request<{ success: boolean; createdEntity: any; convertedType: string }>(`/api/memos/${id}/convert`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  ): Promise<{ success: boolean; createdEntity: unknown; convertedType: string }> {
+    return post(`/api/memos/${id}/convert`, data);
   },
 
-  async autoStockMemos(memoIds?: string[]): Promise<{
+  autoStockMemos(memoIds?: string[]): Promise<{
     success: boolean;
     processedCount: number;
+    skippedCount: number;
     stockedCounts: { priority: number; challenge: number; interest: number };
   }> {
-    return request<{
-      success: boolean;
-      processedCount: number;
-      stockedCounts: { priority: number; challenge: number; interest: number };
-    }>('/api/memos/auto-stock', {
-      method: 'POST',
-      body: JSON.stringify({ memo_ids: memoIds }),
-    });
+    return post('/api/memos/auto-stock', { memo_ids: memoIds });
   },
 
   // System
-  async resetData(): Promise<{ success: boolean; message: string }> {
-    return request('/api/system/reset', { method: 'POST' });
-  },
-
   getExportUrl(): string {
     return '/api/system/export';
   },
 };
-

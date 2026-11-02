@@ -12,10 +12,10 @@ import { QuickFocusView } from './components/QuickFocusView.tsx';
 import { MySpaceView, MySpaceSubTab } from './components/MySpaceView.tsx';
 import { WeeklyReviewView } from './components/WeeklyReviewView.tsx';
 import { SettingsView } from './components/SettingsView.tsx';
-import { AuthModal } from './components/AuthModal.tsx';
+import { AuthModal, AuthMode } from './components/AuthModal.tsx';
 import { QuickMemoWidget } from './components/QuickMemoWidget.tsx';
 import { ConvertMemoModal } from './components/ConvertMemoModal.tsx';
-import { api } from './services/api.ts';
+import { api, setUnauthorizedHandler } from './services/api.ts';
 import {
   DashboardOverview,
   Challenge,
@@ -33,7 +33,27 @@ import {
   StakeholderRelationship,
 } from './types/index.ts';
 
+type AuthStatus = 'checking' | 'authenticated' | 'anonymous';
+
+/** Reads and strips the one-time parameters that e-mail links append to the URL. */
+function takeEmailLinkParams() {
+  const params = new URLSearchParams(window.location.search);
+  const result = {
+    verifyToken: params.get('verify_token'),
+    resetToken: params.get('reset_token'),
+    forgot: params.get('forgot') === '1',
+    tab: params.get('tab'),
+  };
+  if (window.location.search) {
+    window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+  }
+  return result;
+}
+
 function AppContent() {
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('checking');
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [resetToken, setResetToken] = useState<string | null>(null);
   const [currentTab, setCurrentTab] = useState<NavTab>('focus');
   const [mySpaceSubTab, setMySpaceSubTab] = useState<MySpaceSubTab>('priorities');
   const [user, setUser] = useState<User | null>(null);
@@ -47,7 +67,6 @@ function AppContent() {
   const [memos, setMemos] = useState<QuickMemo[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshingInsights, setIsRefreshingInsights] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isMemoWidgetOpen, setIsMemoWidgetOpen] = useState(false);
 
   // Memo conversion modal state
@@ -58,12 +77,11 @@ function AppContent() {
 
   const { showToast } = useToast();
 
-  // Load all initial data from backend
+  // Load all workspace data for the signed-in user
   const loadData = useCallback(async () => {
     try {
-      const [ovData, meData, decData, memosData] = await Promise.all([
+      const [ovData, decData, memosData] = await Promise.all([
         api.getDashboardOverview(),
-        api.getMe().catch(() => ({ user: null })),
         api.getDecisionLogs().catch(() => []),
         api.getQuickMemos().catch(() => []),
       ]);
@@ -79,11 +97,8 @@ function AppContent() {
       // Reviews
       const revs = await api.getReviews().catch(() => []);
       setReviews(revs);
-
-      if (meData?.user) {
-        setUser(meData.user);
-      }
     } catch (err: any) {
+      if (err?.status === 401) return; // handled by the unauthorized handler
       console.error('Failed to load initial data:', err);
       showToast('データの読み込みに失敗しました。サーバーの稼働状態を確認してください。', 'error');
     } finally {
@@ -91,9 +106,68 @@ function AppContent() {
     }
   }, [showToast]);
 
+  const clearWorkspace = useCallback(() => {
+    setUser(null);
+    setOverview(null);
+    setChallenges([]);
+    setPriorities([]);
+    setInterests([]);
+    setStakeholders([]);
+    setReviews([]);
+    setDecisionLogs([]);
+    setMemos([]);
+    setLoading(true);
+  }, []);
+
+  const handleSignedIn = useCallback(
+    (signedInUser: User) => {
+      setUser(signedInUser);
+      setAuthStatus('authenticated');
+      loadData();
+    },
+    [loadData]
+  );
+
+  // Session bootstrap: handle e-mail links, then restore the session from the cookie
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    setUnauthorizedHandler(() => {
+      clearWorkspace();
+      setAuthMode('login');
+      setAuthStatus('anonymous');
+      showToast('セッションの有効期限が切れました。再度ログインしてください。', 'info');
+    });
+
+    const { verifyToken, resetToken: linkResetToken, forgot, tab } = takeEmailLinkParams();
+    if (tab === 'review') setCurrentTab('review');
+
+    (async () => {
+      if (verifyToken) {
+        try {
+          const res = await api.verifyEmail(verifyToken);
+          showToast(res.message);
+        } catch (err: any) {
+          showToast(err.message || 'メールアドレスの確認に失敗しました', 'error');
+        }
+      }
+
+      if (linkResetToken) {
+        setResetToken(linkResetToken);
+        setAuthMode('reset');
+        setAuthStatus('anonymous');
+        return;
+      }
+
+      try {
+        const me = await api.getMe();
+        handleSignedIn(me.user);
+      } catch {
+        setAuthMode(forgot ? 'forgot' : 'login');
+        setAuthStatus('anonymous');
+      }
+    })();
+
+    return () => setUnauthorizedHandler(null);
+  }, [clearWorkspace, handleSignedIn, showToast]);
 
   // Global keyboard shortcut: Press 'm' to open quick memo when not typing
   useEffect(() => {
@@ -335,8 +409,11 @@ function AppContent() {
         showToast(
           `画面遷移に伴い、メモ${res.processedCount}件を各ストックへ自動登録しました（Priorities: ${res.stockedCounts.priority}件, Problems: ${res.stockedCounts.challenge}件, Interests: ${res.stockedCounts.interest}件）`
         );
-        await loadData();
       }
+      if (res.skippedCount > 0) {
+        showToast(`最優先事項の上限に達しているため、メモ${res.skippedCount}件はメモのまま残しました`, 'info');
+      }
+      await loadData();
     } catch (err: any) {
       console.error('Auto stock error:', err);
     } finally {
@@ -378,6 +455,20 @@ function AppContent() {
     setCurrentTab(tab);
   };
 
+  if (authStatus !== 'authenticated') {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA]">
+        <AuthModal
+          isOpen={authStatus === 'anonymous'}
+          initialMode={authMode}
+          resetToken={resetToken}
+          onSuccess={handleSignedIn}
+          onResetComplete={() => setResetToken(null)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#FAFAFA] flex flex-col text-zinc-900">
       {/* Top Bar Navigation */}
@@ -389,7 +480,6 @@ function AppContent() {
           if (memos.length > 0) await handleAutoStockMemos();
           setCurrentTab('review');
         }}
-        onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onOpenQuickMemo={() => setIsMemoWidgetOpen(true)}
       />
 
@@ -478,15 +568,13 @@ function AppContent() {
         {currentTab === 'settings' && (
           <SettingsView
             user={user}
-            onLogout={() => {
-              api.logout();
-              setUser(null);
+            onUserUpdated={setUser}
+            onLogout={async () => {
+              await api.logout().catch(() => undefined);
+              clearWorkspace();
+              setAuthMode('login');
+              setAuthStatus('anonymous');
               showToast('ログアウトしました');
-              setIsAuthModalOpen(true);
-            }}
-            onDataReset={async () => {
-              await api.resetData();
-              await loadData();
             }}
           />
         )}
@@ -509,16 +597,6 @@ function AppContent() {
         memo={convertTarget?.memo || null}
         targetType={convertTarget?.targetType || null}
         onConfirm={handleConfirmConvert}
-      />
-
-      {/* Global Auth Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onSuccess={(newUser) => {
-          setUser(newUser);
-          loadData();
-        }}
       />
 
       {/* Footer */}

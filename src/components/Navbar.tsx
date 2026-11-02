@@ -1,6 +1,7 @@
 import React from 'react';
 import { Compass, Menu, X, User as UserIcon, FileText } from 'lucide-react';
 import { User } from '../types/index.ts';
+import { UserAvatar } from './UserAvatar.tsx';
 
 export type NavTab = 'focus' | 'dashboard' | 'myspace' | 'review' | 'settings';
 
@@ -9,11 +10,10 @@ interface NavbarProps {
   onSelectTab: (tab: NavTab) => void;
   user: User | null;
   onOpenReviewModal?: () => void;
-  onOpenAuthModal?: () => void;
   onOpenQuickMemo?: () => void;
 }
 
-export function Navbar({ currentTab, onSelectTab, user, onOpenReviewModal, onOpenAuthModal, onOpenQuickMemo }: NavbarProps) {
+export function Navbar({ currentTab, onSelectTab, user, onOpenReviewModal, onOpenQuickMemo }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   const navItems: { id: NavTab; label: string }[] = [
@@ -88,17 +88,9 @@ export function Navbar({ currentTab, onSelectTab, user, onOpenReviewModal, onOpe
                   : 'border-zinc-200 hover:border-zinc-300 bg-white'
               }`}
             >
-              <img
-                src="/src/assets/images/avatar_founder_user_1793331998568.jpg"
-                alt={user?.name || 'User Profile'}
-                className="w-7 h-7 rounded-full object-cover"
-                referrerPolicy="no-referrer"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-              />
+              <UserAvatar user={user} />
               <span className="hidden xl:inline text-xs font-medium text-zinc-700 max-w-[100px] truncate">
-                {user?.name || 'Seiya'}
+                {user?.name}
               </span>
             </button>
 

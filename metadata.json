@@ -1,6 +1,0 @@
-{
-  "name": "Beyond TODO.",
-  "description": "自分の意思で、人生を動かす。課題・最優先事項・興味関心・ステークホルダーの期待を統合管理するパーソナルマネジメントツール",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
