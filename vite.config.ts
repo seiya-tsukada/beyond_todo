@@ -2,15 +2,20 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+// Where /api is proxied in development: the api container under docker compose,
+// otherwise a local uvicorn started with `npm run dev:api`.
+const apiTarget = process.env.API_PROXY_TARGET ?? `http://127.0.0.1:${process.env.API_PORT ?? '8000'}`;
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
-    // In development the Python API runs separately (npm run dev:api).
-    // The Host header is preserved so the API's same-origin check passes.
+    // Bind-mounted sources in Docker on macOS may not emit file events
+    watch: process.env.VITE_USE_POLLING === 'true' ? { usePolling: true, interval: 300 } : undefined,
     proxy: {
       '/api': {
-        target: `http://127.0.0.1:${process.env.API_PORT ?? '8000'}`,
+        target: apiTarget,
+        // Keep the browser's Host header so the API's same-origin check passes
         changeOrigin: false,
       },
     },
