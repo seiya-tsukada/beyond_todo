@@ -8,10 +8,14 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from .config import get_settings
 from .errors import install_error_handlers
 from .routers import auth, cron, overview, workspace
 
 logging.basicConfig(level=logging.INFO)
+
+# Fail fast on a misconfigured deployment (production checks required variables)
+logging.getLogger(__name__).info("Starting in APP_ENV=%s", get_settings().app_env)
 
 app = FastAPI(title="Beyond TODO. API", version="2.0.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
 install_error_handlers(app)
@@ -35,7 +39,7 @@ async def reject_cross_site_writes(request: Request, call_next):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "env": get_settings().app_env}
 
 
 app.include_router(auth.router)

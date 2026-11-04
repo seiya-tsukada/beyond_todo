@@ -1,4 +1,9 @@
-"""E-mail transport via Resend. Without RESEND_API_KEY, messages are logged instead."""
+"""E-mail transport.
+
+Production sends through Resend. In the local environment notifications are not
+delivered; the message is written to the API log so links (e.g. e-mail
+verification) can still be followed during development.
+"""
 
 from __future__ import annotations
 
@@ -21,9 +26,9 @@ class EmailMessage:
 def send_email(message: EmailMessage) -> bool:
     """Send one e-mail. Returns False (and logs) on failure instead of raising."""
     settings = get_settings()
-    if not settings.resend_api_key:
-        logger.warning("RESEND_API_KEY not set; email not sent.\nTo: %s\nSubject: %s\n\n%s",
-                       message.to, message.subject, message.text)
+    if not settings.notifications_enabled:
+        logger.info("[%s] notifications disabled; email not sent.\nTo: %s\nSubject: %s\n\n%s",
+                    settings.app_env, message.to, message.subject, message.text)
         return True
 
     import resend
