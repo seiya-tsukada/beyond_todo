@@ -13,3 +13,6 @@ coverage/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Local DB dumps (README: DB データの扱い)
+/backup*.sql

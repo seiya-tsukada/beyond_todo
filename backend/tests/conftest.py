@@ -20,6 +20,7 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 
 @pytest.fixture(scope="session", autouse=True)
 def _env():
+    os.environ["APP_ENV"] = "local"
     os.environ["DATABASE_URL"] = TEST_DATABASE_URL or ""
     os.environ["COOKIE_SECURE"] = "false"
     os.environ["CRON_SECRET"] = "test-cron-secret"

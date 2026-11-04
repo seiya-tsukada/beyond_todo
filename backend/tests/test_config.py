@@ -1,0 +1,60 @@
+import pytest
+
+from backend.config import get_settings
+
+PROD_ENV = {
+    "DATABASE_URL": "postgresql://example/db",
+    "RESEND_API_KEY": "re_test",
+    "MAIL_FROM": "Beyond TODO. <noreply@example.com>",
+    "CRON_SECRET": "secret",
+    "APP_URL": "https://beyond-todo.example.com",
+}
+
+
+@pytest.fixture
+def env(monkeypatch):
+    for name in ("APP_ENV", "VERCEL_ENV", "COOKIE_SECURE", *PROD_ENV):
+        monkeypatch.delenv(name, raising=False)
+    get_settings.cache_clear()
+    yield monkeypatch
+    get_settings.cache_clear()
+
+
+def test_defaults_to_local_without_notifications(env):
+    s = get_settings()
+    assert s.app_env == "local"
+    assert not s.notifications_enabled
+
+
+def test_vercel_is_production(env):
+    for name, value in PROD_ENV.items():
+        env.setenv(name, value)
+    env.setenv("VERCEL_ENV", "preview")
+    env.setenv("COOKIE_SECURE", "false")
+    s = get_settings()
+    assert s.app_env == "production"
+    assert s.notifications_enabled
+    assert s.cookie_secure  # always Secure in production
+
+
+def test_production_requires_config(env):
+    env.setenv("APP_ENV", "production")
+    env.setenv("APP_URL", "http://insecure.example.com")
+    with pytest.raises(RuntimeError, match="RESEND_API_KEY.*APP_URL must be an https"):
+        get_settings()
+
+
+def test_invalid_app_env(env):
+    env.setenv("APP_ENV", "staging")
+    with pytest.raises(RuntimeError, match="APP_ENV"):
+        get_settings()
+
+
+def test_local_does_not_send_email(env, monkeypatch):
+    import resend
+
+    from backend.notifications.mailer import EmailMessage, send_email
+
+    env.setenv("RESEND_API_KEY", "re_real_key")
+    monkeypatch.setattr(resend.Emails, "send", lambda *_: pytest.fail("must not send locally"))
+    assert send_email(EmailMessage(to="a@example.com", subject="s", html="<p>h</p>", text="t"))
