@@ -76,27 +76,21 @@ Vercel の Project Settings → Environment Variables（Production）に `.env.e
 
 | 変数 | 必須 | 内容 |
 | --- | --- | --- |
-| `DATA_BACKEND` | | `postgres`（既定）または `mock`（DB を使わず固定データを返す） |
-| `MAIL_BACKEND` | | `resend`（本番の既定）または `log`（送信せずログ出力） |
+| `DATA_BACKEND` | | `postgres` または `mock`（DB を使わず固定データを返す）。未設定なら `DATABASE_URL` があれば `postgres`、なければ `mock` |
+| `MAIL_BACKEND` | | `resend` または `log`（送信せずログ出力）。未設定なら `RESEND_API_KEY` があれば `resend`、なければ `log` |
 | `DEMO_LOGIN` | | `true`（既定）ならログイン画面に「ログインをスキップ」を表示し、共用のデモユーザー（demo@example.com）で入れる。本運用前に `false` にする |
 | `DATABASE_URL` | ○※ | Supabase の Transaction pooler（ポート 6543）の接続文字列。※`DATA_BACKEND=mock` なら不要 |
 | `RESEND_API_KEY` / `MAIL_FROM` | ○※ | Resend の API キーと送信元。※`MAIL_BACKEND=log` なら不要 |
-| `CRON_SECRET` | ○ | 十分に長いランダム文字列（Vercel Cron の認証） |
+| `CRON_SECRET` | | 十分に長いランダム文字列（Vercel Cron の認証）。未設定の間は週次リマインドの Cron が動きません |
 | `APP_URL` | | 本番URL（`https://` 必須。メール内リンクに使用）。未設定なら Vercel のデプロイ URL（`VERCEL_PROJECT_PRODUCTION_URL`）を使用 |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | | 未設定ならルールベースのインサイト |
 | `SESSION_TTL_DAYS` / `APP_TIMEZONE` | | 既定値: `30` / `Asia/Tokyo` |
 
-必須変数が1つでも欠けていると、API は起動時に `Invalid production configuration` で停止します（設定漏れのまま動かないようにするため）。Vercel の Function ログで不足している変数名を確認できます。
+`DATA_BACKEND=postgres` / `MAIL_BACKEND=resend` を明示したのに対応する変数が欠けていると、API は起動時に `Invalid production configuration` で停止します（設定漏れのまま動かないようにするため）。Vercel の Function ログで不足している変数名を確認できます。
 
 ### Supabase / Resend なしで先行デプロイする（モック）
 
-Supabase と Resend の接続前でも、Vercel に次の3つだけ設定すればデプロイして画面を確認できます。
-
-| 変数 | 値 |
-| --- | --- |
-| `DATA_BACKEND` | `mock` |
-| `MAIL_BACKEND` | `log` |
-| `CRON_SECRET` | ランダム文字列（例: `openssl rand -hex 32` の出力） |
+Supabase と Resend の接続前は、環境変数を何も設定しなくてもデプロイして画面を確認できます（`DATABASE_URL` / `RESEND_API_KEY` がなければ自動で `mock` / `log` になります）。ログイン画面の「ログインをスキップ」からデモユーザーで入れます。
 
 - `demo@example.com` / `demo-password` でログインできます（どのセッションもこのデモユーザーとして扱われます）。
 - データは `backend/repositories/mock/_data.py` の固定データです。作成・更新・削除は成功レスポンスを返しますが保存されないため、再読み込みすると元に戻ります。新規登録も成功しますが、ログイン後はデモユーザーになります。

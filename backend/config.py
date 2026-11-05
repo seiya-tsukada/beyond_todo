@@ -15,6 +15,11 @@ Two switches replace external services with stand-ins, independently of APP_ENV:
 - ``MAIL_BACKEND``: ``resend`` (default in production) sends through Resend; ``log``
   (default locally) writes the message to the log instead.
 
+In production the defaults follow what is configured: without DATABASE_URL the
+data backend falls back to ``mock``, and without RESEND_API_KEY mail falls back to
+``log``, so a fresh Vercel deployment starts with no variables set. Setting
+DATA_BACKEND / MAIL_BACKEND explicitly still requires the matching variables.
+
 ``DEMO_LOGIN`` (default ``true``) shows a "skip login" button that signs in as a
 shared demo user (demo@example.com). Turn it off once real users sign up.
 """
@@ -96,7 +101,8 @@ class Settings:
 
 
 def _validate_production(s: Settings) -> None:
-    required: list[tuple[str, object]] = [("CRON_SECRET", s.cron_secret), ("APP_URL", s.app_url)]
+    # CRON_SECRET is not required: without it the cron endpoint rejects every call.
+    required: list[tuple[str, object]] = [("APP_URL", s.app_url)]
     if s.data_backend == "postgres":
         required.append(("DATABASE_URL", s.database_url))
     if s.mail_backend == "resend":
@@ -115,8 +121,14 @@ def get_settings() -> Settings:
     production = app_env == "production"
     settings = Settings(
         app_env=app_env,
-        data_backend=_choice("DATA_BACKEND", ("postgres", "mock"), "postgres"),  # type: ignore[arg-type]
-        mail_backend=_choice("MAIL_BACKEND", ("resend", "log"), "resend" if production else "log"),  # type: ignore[arg-type]
+        data_backend=_choice(  # type: ignore[arg-type]
+            "DATA_BACKEND",
+            ("postgres", "mock"),
+            "postgres" if not production or os.environ.get("DATABASE_URL") else "mock",
+        ),
+        mail_backend=_choice(  # type: ignore[arg-type]
+            "MAIL_BACKEND", ("resend", "log"), "resend" if production and os.environ.get("RESEND_API_KEY") else "log"
+        ),
         database_url=os.environ.get("DATABASE_URL", ""),
         app_url=(os.environ.get("APP_URL") or _default_app_url(production)).rstrip("/"),
         # Production always uses Secure cookies; locally it defaults to true as well
