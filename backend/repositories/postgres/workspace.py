@@ -10,7 +10,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from ..db import Conn, delete_owned, fetch_all, fetch_one, insert, update_owned
+from ...db import Conn, delete_owned, fetch_all, fetch_one, insert, update_owned
 
 Row = dict[str, Any]
 

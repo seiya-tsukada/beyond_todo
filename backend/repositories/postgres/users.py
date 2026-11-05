@@ -7,8 +7,8 @@ from typing import Any, Literal
 
 from psycopg import sql
 
-from ..db import Conn, execute, fetch_all, fetch_one, insert
-from ..security import hash_token, new_token
+from ...db import Conn, execute, fetch_all, fetch_one, insert
+from ...security import hash_token, new_token
 
 TokenPurpose = Literal["verify_email", "reset_password"]
 

@@ -13,7 +13,10 @@ PROD_ENV = {
 
 @pytest.fixture
 def env(monkeypatch):
-    for name in ("APP_ENV", "VERCEL_ENV", "COOKIE_SECURE", *PROD_ENV):
+    for name in (
+        "APP_ENV", "VERCEL_ENV", "VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL",
+        "COOKIE_SECURE", "DATA_BACKEND", "MAIL_BACKEND", *PROD_ENV,
+    ):
         monkeypatch.delenv(name, raising=False)
     get_settings.cache_clear()
     yield monkeypatch
@@ -41,6 +44,24 @@ def test_production_requires_config(env):
     env.setenv("APP_ENV", "production")
     env.setenv("APP_URL", "http://insecure.example.com")
     with pytest.raises(RuntimeError, match="RESEND_API_KEY.*APP_URL must be an https"):
+        get_settings()
+
+
+def test_production_with_mocks_needs_no_db_or_resend(env):
+    env.setenv("VERCEL_ENV", "production")
+    env.setenv("VERCEL_PROJECT_PRODUCTION_URL", "beyond-todo.vercel.app")
+    env.setenv("CRON_SECRET", "secret")
+    env.setenv("DATA_BACKEND", "mock")
+    env.setenv("MAIL_BACKEND", "log")
+    s = get_settings()
+    assert (s.data_backend, s.mail_backend) == ("mock", "log")
+    assert not s.notifications_enabled
+    assert s.app_url == "https://beyond-todo.vercel.app"  # derived from Vercel's env
+
+
+def test_invalid_backend(env):
+    env.setenv("DATA_BACKEND", "sqlite")
+    with pytest.raises(RuntimeError, match="DATA_BACKEND"):
         get_settings()
 
 
