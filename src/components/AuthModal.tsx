@@ -22,11 +22,19 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isMockBackend, setIsMockBackend] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
     setMode(initialMode);
   }, [initialMode]);
+
+  useEffect(() => {
+    api
+      .getHealth()
+      .then((h) => setIsMockBackend(h.data === 'mock'))
+      .catch(() => setIsMockBackend(false));
+  }, []);
 
   if (!isOpen) return null;
 
@@ -57,6 +65,19 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
       }
     } catch (err: any) {
       showToast(err.message || '処理に失敗しました', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSkip = async () => {
+    setLoading(true);
+    try {
+      const res = await api.demoLogin();
+      showToast('デモユーザーでログインしました');
+      onSuccess(res.user);
+    } catch (err: any) {
+      showToast(err.message || 'スキップに失敗しました', 'error');
     } finally {
       setLoading(false);
     }
@@ -179,6 +200,17 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
               : { login: 'ログインする', register: 'アカウントを作成', forgot: '再設定メールを送信', reset: 'パスワードを変更する' }[mode]}
           </button>
         </form>
+
+        {isMockBackend && mode === 'login' && (
+          <button
+            type="button"
+            onClick={handleSkip}
+            disabled={loading}
+            className="w-full mt-2 py-2.5 text-xs font-semibold text-zinc-700 bg-white border border-dashed border-zinc-300 hover:bg-zinc-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+          >
+            ログインをスキップ（モック環境のデモ）
+          </button>
+        )}
 
         <div className="mt-4 pt-4 border-t border-zinc-100 text-center">
           <div className="text-xs text-zinc-500">
