@@ -12,12 +12,13 @@ from ..errors import AppError
 from ..notifications import emails
 from ..repositories import users
 from ..schemas import ForgotPasswordIn, LoginIn, ProfileUpdateIn, RegisterIn, ResetPasswordIn, TokenIn
-from ..security import hash_password, needs_rehash, verify_password
+from ..security import hash_password, needs_rehash, new_token, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 VERIFY_EMAIL_TTL = timedelta(hours=24)
 RESET_PASSWORD_TTL = timedelta(hours=1)
+DEMO_EMAIL = "demo@example.com"
 
 
 def _start_session(conn: DbConn, response: Response, uid: str) -> None:
@@ -75,14 +76,19 @@ def login(body: LoginIn, response: Response, conn: DbConn):
 
 @router.post("/demo-login")
 def demo_login(response: Response, conn: DbConn):
-    """Skip the login form while DATA_BACKEND=mock; signs in as the demo user."""
-    if get_settings().data_backend != "mock":
-        raise AppError(404, "Not Found")
-    from ..repositories.mock.users import DEMO_EMAIL
+    """Skip the login form (DEMO_LOGIN=true): sign in as the shared demo user.
 
+    With a real database the demo user is created on first use, with a random
+    password so it can only be reached through this endpoint.
+    """
+    if not get_settings().demo_login:
+        raise AppError(404, "Not Found")
     user = users.get_by_email(conn, DEMO_EMAIL)
     if user is None:
-        raise AppError(404, "Not Found")
+        user = users.create(
+            conn, email=DEMO_EMAIL, password_hash=hash_password(new_token()), name="デモユーザー", title=None
+        )
+        user = users.update(conn, str(user["id"]), {"email_verified_at": datetime.now(timezone.utc)}) or user
     _start_session(conn, response, str(user["id"]))
     return {"user": users.public_user(user)}
 

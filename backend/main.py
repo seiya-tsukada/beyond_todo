@@ -46,7 +46,7 @@ async def reject_cross_site_writes(request: Request, call_next):
 @app.get("/api/health")
 def health():
     s = get_settings()
-    return {"status": "ok", "env": s.app_env, "data": s.data_backend, "mail": s.mail_backend}
+    return {"status": "ok", "env": s.app_env, "data": s.data_backend, "mail": s.mail_backend, "demo_login": s.demo_login}
 
 
 app.include_router(auth.router)

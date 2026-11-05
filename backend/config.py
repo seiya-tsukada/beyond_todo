@@ -14,6 +14,9 @@ Two switches replace external services with stand-ins, independently of APP_ENV:
   sample data from ``repositories/mock`` and stores nothing.
 - ``MAIL_BACKEND``: ``resend`` (default in production) sends through Resend; ``log``
   (default locally) writes the message to the log instead.
+
+``DEMO_LOGIN`` (default ``true``) shows a "skip login" button that signs in as a
+shared demo user (demo@example.com). Turn it off once real users sign up.
 """
 
 from __future__ import annotations
@@ -80,6 +83,7 @@ class Settings:
     gemini_api_key: str | None
     gemini_model: str
     cron_secret: str | None
+    demo_login: bool
 
     @property
     def is_production(self) -> bool:
@@ -125,6 +129,7 @@ def get_settings() -> Settings:
         gemini_api_key=os.environ.get("GEMINI_API_KEY") or None,
         gemini_model=os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
         cron_secret=os.environ.get("CRON_SECRET") or None,
+        demo_login=_bool(os.environ.get("DEMO_LOGIN"), True),
     )
     if production:
         _validate_production(settings)

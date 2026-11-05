@@ -90,3 +90,28 @@ def test_cross_site_write_rejected(client):
     assert res.status_code == 403
     same = client.post("/api/challenges", json={"title": "x"}, headers={"Origin": "http://testserver"})
     assert same.status_code == 201
+
+
+def test_demo_login_creates_and_reuses_demo_user(client):
+    first = client.post("/api/auth/demo-login")
+    assert first.status_code == 200, first.text
+    user = first.json()["user"]
+    assert user["email"] == "demo@example.com"
+    assert user["email_verified_at"] is not None
+    assert client.get("/api/auth/me").json()["user"]["id"] == user["id"]
+
+    client.post("/api/auth/logout")
+    second = client.post("/api/auth/demo-login")
+    assert second.json()["user"]["id"] == user["id"]
+
+
+def test_demo_login_can_be_disabled(client, monkeypatch):
+    from backend.config import get_settings
+
+    monkeypatch.setenv("DEMO_LOGIN", "false")
+    get_settings.cache_clear()
+    try:
+        assert client.post("/api/auth/demo-login").status_code == 404
+    finally:
+        monkeypatch.delenv("DEMO_LOGIN")
+        get_settings.cache_clear()

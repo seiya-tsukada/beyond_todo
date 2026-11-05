@@ -72,12 +72,12 @@ export const api = {
     return post('/api/auth/login', { email, password });
   },
 
-  /** Only available while the server runs with DATA_BACKEND=mock. */
+  /** Only available while the server runs with DEMO_LOGIN=true (the default). */
   demoLogin(): Promise<{ user: User }> {
     return post('/api/auth/demo-login');
   },
 
-  getHealth(): Promise<{ status: string; env: string; data: 'postgres' | 'mock'; mail: string }> {
+  getHealth(): Promise<{ status: string; env: string; data: 'postgres' | 'mock'; mail: string; demo_login: boolean }> {
     return request('/api/health');
   },
 
