@@ -42,9 +42,19 @@ def test_vercel_is_production(env):
 
 def test_production_requires_config(env):
     env.setenv("APP_ENV", "production")
+    env.setenv("DATA_BACKEND", "postgres")
+    env.setenv("MAIL_BACKEND", "resend")
     env.setenv("APP_URL", "http://insecure.example.com")
-    with pytest.raises(RuntimeError, match="RESEND_API_KEY.*APP_URL must be an https"):
+    with pytest.raises(RuntimeError, match="DATABASE_URL.*RESEND_API_KEY.*APP_URL must be an https"):
         get_settings()
+
+
+def test_vercel_without_any_config_falls_back_to_mocks(env):
+    env.setenv("VERCEL_ENV", "production")
+    env.setenv("VERCEL_PROJECT_PRODUCTION_URL", "beyond-todo.vercel.app")
+    s = get_settings()
+    assert (s.app_env, s.data_backend, s.mail_backend) == ("production", "mock", "log")
+    assert s.cron_secret is None
 
 
 def test_production_with_mocks_needs_no_db_or_resend(env):
