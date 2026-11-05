@@ -78,6 +78,7 @@ Vercel の Project Settings → Environment Variables（Production）に `.env.e
 | --- | --- | --- |
 | `DATA_BACKEND` | | `postgres`（既定）または `mock`（DB を使わず固定データを返す） |
 | `MAIL_BACKEND` | | `resend`（本番の既定）または `log`（送信せずログ出力） |
+| `DEMO_LOGIN` | | `true`（既定）ならログイン画面に「ログインをスキップ」を表示し、共用のデモユーザー（demo@example.com）で入れる。本運用前に `false` にする |
 | `DATABASE_URL` | ○※ | Supabase の Transaction pooler（ポート 6543）の接続文字列。※`DATA_BACKEND=mock` なら不要 |
 | `RESEND_API_KEY` / `MAIL_FROM` | ○※ | Resend の API キーと送信元。※`MAIL_BACKEND=log` なら不要 |
 | `CRON_SECRET` | ○ | 十分に長いランダム文字列（Vercel Cron の認証） |

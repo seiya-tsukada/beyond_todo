@@ -22,7 +22,7 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isMockBackend, setIsMockBackend] = useState(false);
+  const [demoLoginEnabled, setIsMockBackend] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
   useEffect(() => {
     api
       .getHealth()
-      .then((h) => setIsMockBackend(h.data === 'mock'))
+      .then((h) => setIsMockBackend(h.demo_login === true))
       .catch(() => setIsMockBackend(false));
   }, []);
 
@@ -201,14 +201,14 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
           </button>
         </form>
 
-        {isMockBackend && mode === 'login' && (
+        {demoLoginEnabled && mode === 'login' && (
           <button
             type="button"
             onClick={handleSkip}
             disabled={loading}
             className="w-full mt-2 py-2.5 text-xs font-semibold text-zinc-700 bg-white border border-dashed border-zinc-300 hover:bg-zinc-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
           >
-            ログインをスキップ（モック環境のデモ）
+            ログインをスキップ（デモユーザーで試す）
           </button>
         )}
 

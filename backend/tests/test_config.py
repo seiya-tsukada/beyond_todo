@@ -15,7 +15,7 @@ PROD_ENV = {
 def env(monkeypatch):
     for name in (
         "APP_ENV", "VERCEL_ENV", "VERCEL_URL", "VERCEL_PROJECT_PRODUCTION_URL",
-        "COOKIE_SECURE", "DATA_BACKEND", "MAIL_BACKEND", *PROD_ENV,
+        "COOKIE_SECURE", "DATA_BACKEND", "MAIL_BACKEND", "DEMO_LOGIN", *PROD_ENV,
     ):
         monkeypatch.delenv(name, raising=False)
     get_settings.cache_clear()
@@ -79,3 +79,10 @@ def test_local_does_not_send_email(env, monkeypatch):
     env.setenv("RESEND_API_KEY", "re_real_key")
     monkeypatch.setattr(resend.Emails, "send", lambda *_: pytest.fail("must not send locally"))
     assert send_email(EmailMessage(to="a@example.com", subject="s", html="<p>h</p>", text="t"))
+
+
+def test_demo_login_defaults_on_and_can_be_turned_off(env):
+    assert get_settings().demo_login
+    env.setenv("DEMO_LOGIN", "false")
+    get_settings.cache_clear()
+    assert not get_settings().demo_login
