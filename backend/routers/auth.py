@@ -73,6 +73,20 @@ def login(body: LoginIn, response: Response, conn: DbConn):
     return {"user": users.public_user(user)}
 
 
+@router.post("/demo-login")
+def demo_login(response: Response, conn: DbConn):
+    """Skip the login form while DATA_BACKEND=mock; signs in as the demo user."""
+    if get_settings().data_backend != "mock":
+        raise AppError(404, "Not Found")
+    from ..repositories.mock.users import DEMO_EMAIL
+
+    user = users.get_by_email(conn, DEMO_EMAIL)
+    if user is None:
+        raise AppError(404, "Not Found")
+    _start_session(conn, response, str(user["id"]))
+    return {"user": users.public_user(user)}
+
+
 @router.post("/logout")
 def logout(request: Request, response: Response, conn: DbConn):
     token = request.cookies.get(SESSION_COOKIE)
