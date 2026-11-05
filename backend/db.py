@@ -4,11 +4,15 @@ Each request opens one short-lived connection and runs inside a single
 transaction: committed when the request handler succeeds, rolled back on error.
 Use Supabase's transaction pooler URL (port 6543) on Vercel; prepared statements
 are disabled because the pooler does not support them.
+
+With DATA_BACKEND=mock no database is used: the repositories return static data
+and the "connection" passed to them is None.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 import psycopg
@@ -22,8 +26,11 @@ SCHEMA = "beyond_todo"
 Conn = psycopg.Connection[dict[str, Any]]
 
 
-def connect() -> Conn:
+def connect() -> AbstractContextManager[Conn]:
+    """Open a connection; use as `with connect() as conn:` (commits on success)."""
     settings = get_settings()
+    if settings.data_backend == "mock":
+        return nullcontext(None)  # type: ignore[arg-type]
     if not settings.database_url:
         raise RuntimeError("DATABASE_URL is not configured")
     return psycopg.connect(settings.database_url, row_factory=dict_row, prepare_threshold=None)

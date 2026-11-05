@@ -15,7 +15,13 @@ from .routers import auth, cron, overview, workspace
 logging.basicConfig(level=logging.INFO)
 
 # Fail fast on a misconfigured deployment (production checks required variables)
-logging.getLogger(__name__).info("Starting in APP_ENV=%s", get_settings().app_env)
+_settings = get_settings()
+logging.getLogger(__name__).info(
+    "Starting in APP_ENV=%s (DATA_BACKEND=%s, MAIL_BACKEND=%s)",
+    _settings.app_env,
+    _settings.data_backend,
+    _settings.mail_backend,
+)
 
 app = FastAPI(title="Beyond TODO. API", version="2.0.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
 install_error_handlers(app)
@@ -39,7 +45,8 @@ async def reject_cross_site_writes(request: Request, call_next):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "env": get_settings().app_env}
+    s = get_settings()
+    return {"status": "ok", "env": s.app_env, "data": s.data_backend, "mail": s.mail_backend}
 
 
 app.include_router(auth.router)

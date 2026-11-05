@@ -11,7 +11,7 @@
 | バックエンド | Python / FastAPI | `backend/`（エントリ: `api/index.py`） |
 | DB | Supabase PostgreSQL（`beyond_todo` スキーマ） | `supabase/migrations/` |
 | 認証 | 独自実装（Argon2id + httpOnly セッション Cookie。Supabase Auth 不使用） | `backend/routers/auth.py` |
-| 通知 | Resend によるメール（本番のみ。ローカルはログ出力） | `backend/notifications/` |
+| 通知 | Resend によるメール（`MAIL_BACKEND=resend`。ローカルの既定はログ出力） | `backend/notifications/` |
 | AI | Gemini（未設定時はルールベース） | `backend/services/insights.py` |
 
 ```
@@ -20,7 +20,9 @@ backend/
   main.py                    FastAPI アプリ、CSRF（同一オリジン）チェック
   config.py / db.py          環境変数 / psycopg 接続（1リクエスト=1トランザクション）
   routers/                   auth・workspace（CRUD）・overview（ダッシュボード/AI/エクスポート）・cron
-  repositories/              SQL（すべて user_id でスコープ）
+  repositories/              データアクセス（DATA_BACKEND で実装を選択）
+    postgres/                SQL（すべて user_id でスコープ）
+    mock/                    固定のサンプルデータを返すモック（保存しない）
   services/                  優先事項の上限、メモ変換・自動ストック、AIインサイト
   notifications/             メール本文と Resend 送信
   tests/                     Postgres を使った結合テスト
@@ -74,14 +76,33 @@ Vercel の Project Settings → Environment Variables（Production）に `.env.e
 
 | 変数 | 必須 | 内容 |
 | --- | --- | --- |
-| `DATABASE_URL` | ○ | Supabase の Transaction pooler（ポート 6543）の接続文字列 |
-| `APP_URL` | ○ | 本番URL（`https://` 必須。メール内リンクに使用） |
-| `RESEND_API_KEY` / `MAIL_FROM` | ○ | Resend の API キーと送信元 |
+| `DATA_BACKEND` | | `postgres`（既定）または `mock`（DB を使わず固定データを返す） |
+| `MAIL_BACKEND` | | `resend`（本番の既定）または `log`（送信せずログ出力） |
+| `DATABASE_URL` | ○※ | Supabase の Transaction pooler（ポート 6543）の接続文字列。※`DATA_BACKEND=mock` なら不要 |
+| `RESEND_API_KEY` / `MAIL_FROM` | ○※ | Resend の API キーと送信元。※`MAIL_BACKEND=log` なら不要 |
 | `CRON_SECRET` | ○ | 十分に長いランダム文字列（Vercel Cron の認証） |
+| `APP_URL` | | 本番URL（`https://` 必須。メール内リンクに使用）。未設定なら Vercel のデプロイ URL（`VERCEL_PROJECT_PRODUCTION_URL`）を使用 |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | | 未設定ならルールベースのインサイト |
 | `SESSION_TTL_DAYS` / `APP_TIMEZONE` | | 既定値: `30` / `Asia/Tokyo` |
 
 必須変数が1つでも欠けていると、API は起動時に `Invalid production configuration` で停止します（設定漏れのまま動かないようにするため）。Vercel の Function ログで不足している変数名を確認できます。
+
+### Supabase / Resend なしで先行デプロイする（モック）
+
+Supabase と Resend の接続前でも、Vercel に次の3つだけ設定すればデプロイして画面を確認できます。
+
+| 変数 | 値 |
+| --- | --- |
+| `DATA_BACKEND` | `mock` |
+| `MAIL_BACKEND` | `log` |
+| `CRON_SECRET` | ランダム文字列（例: `openssl rand -hex 32` の出力） |
+
+- `demo@example.com` / `demo-password` でログインできます（どのセッションもこのデモユーザーとして扱われます）。
+- データは `backend/repositories/mock/_data.py` の固定データです。作成・更新・削除は成功レスポンスを返しますが保存されないため、再読み込みすると元に戻ります。新規登録も成功しますが、ログイン後はデモユーザーになります。
+- メールは送信されず、内容が Vercel の Function ログに出ます。
+- `GET /api/health` で `{"data": "mock", "mail": "log"}` のように現在のモードを確認できます。
+
+Supabase に切り替えるときは、`DATABASE_URL` を設定して `DATA_BACKEND` を削除（または `postgres`）にします。Resend も同様に `RESEND_API_KEY` / `MAIL_FROM` を設定して `MAIL_BACKEND` を削除します。
 
 ## ローカル開発（Docker Compose・推奨）
 
