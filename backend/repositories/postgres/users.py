@@ -112,6 +112,15 @@ def consume_token(conn: Conn, token: str, purpose: TokenPurpose) -> str | None:
     return str(row["user_id"]) if row else None
 
 
+def purge_expired(conn: Conn) -> dict[str, int]:
+    """Delete expired sessions and expired or used one-time tokens."""
+    sessions = execute(conn, "delete from beyond_todo.sessions where expires_at <= now()")
+    tokens = execute(
+        conn, "delete from beyond_todo.auth_tokens where expires_at <= now() or used_at is not null"
+    )
+    return {"sessions": sessions, "auth_tokens": tokens}
+
+
 # --- Scheduled notifications ---
 def users_due_weekly_review_reminder(conn: Conn, week_start: datetime) -> list[dict[str, Any]]:
     """Verified, opted-in users who have not written a review since `week_start`."""

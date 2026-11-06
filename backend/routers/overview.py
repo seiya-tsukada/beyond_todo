@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from ..deps import CurrentUser, DbConn, user_id
 from ..repositories import workspace as repo
-from ..schemas import AnalyzeIn
+from ..schemas import AnalyzeIn, DashboardOverviewOut, InsightsOut
 from ..services.insights import AnalysisInput, generate_insights
 from ..weeks import current_week
 
@@ -28,7 +28,7 @@ def _load_analysis_input(conn: DbConn, uid: str, week: str) -> AnalysisInput:
     )
 
 
-@router.get("/dashboard/overview")
+@router.get("/dashboard/overview", response_model=DashboardOverviewOut)
 def dashboard_overview(user: CurrentUser, conn: DbConn, week: Optional[str] = Query(None)):
     target_week = week or current_week()
     data = _load_analysis_input(conn, user_id(user), target_week)
@@ -58,7 +58,7 @@ def dashboard_overview(user: CurrentUser, conn: DbConn, week: Optional[str] = Qu
     }
 
 
-@router.post("/insights/analyze")
+@router.post("/insights/analyze", response_model=InsightsOut)
 def analyze_insights(body: AnalyzeIn, user: CurrentUser, conn: DbConn):
     data = _load_analysis_input(conn, user_id(user), current_week())
     data.user_query = body.userQuery

@@ -162,6 +162,7 @@ DECISION_LOGS: list[Row] = [
         "id": _id(701),
         "user_id": DEMO_USER_ID,
         "created_at": created_at(3),
+        "updated_at": created_at(3),
         "priority_id": _id(203),
         "decision": "新機能の開発より既存顧客の定着施策を優先する",
         "reason": "解約率の悪化が売上へのインパクトとして最も大きいため",
@@ -225,9 +226,7 @@ def find(source: list[Row], row_id: str) -> Row | None:
 def new_row(table: str, values: Row, user_id: str | None = DEMO_USER_ID) -> Row:
     """What an insert would have returned (not stored)."""
     now = datetime.now(timezone.utc)
-    row: Row = {"id": str(uuid.uuid4()), **DEFAULTS.get(table, {}), **values, "created_at": now}
-    if table != "decision_logs":
-        row["updated_at"] = now
+    row: Row = {"id": str(uuid.uuid4()), **DEFAULTS.get(table, {}), **values, "created_at": now, "updated_at": now}
     if user_id is not None:
         row["user_id"] = user_id
     return row

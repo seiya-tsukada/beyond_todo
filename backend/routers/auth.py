@@ -11,7 +11,19 @@ from ..deps import SESSION_COOKIE, CurrentUser, DbConn, user_id
 from ..errors import AppError
 from ..notifications import emails
 from ..repositories import users
-from ..schemas import ForgotPasswordIn, LoginIn, ProfileUpdateIn, RegisterIn, ResetPasswordIn, TokenIn
+from ..schemas import (
+    ForgotPasswordIn,
+    LoginIn,
+    MessageOut,
+    ProfileUpdateIn,
+    RegisterIn,
+    RegisterOut,
+    ResetPasswordIn,
+    SuccessOut,
+    TokenIn,
+    UserEnvelope,
+    VerifyEmailOut,
+)
 from ..security import hash_password, needs_rehash, new_token, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -44,7 +56,7 @@ def _send_verification(conn: DbConn, user: dict) -> None:
     emails.send_verification_email(user["email"], user["name"], token)
 
 
-@router.post("/register", status_code=201)
+@router.post("/register", status_code=201, response_model=RegisterOut)
 def register(body: RegisterIn, response: Response, conn: DbConn):
     if users.get_by_email(conn, body.email):
         raise AppError(400, "このメールアドレスは既に登録されています。")
@@ -63,7 +75,7 @@ def register(body: RegisterIn, response: Response, conn: DbConn):
     }
 
 
-@router.post("/login")
+@router.post("/login", response_model=UserEnvelope)
 def login(body: LoginIn, response: Response, conn: DbConn):
     user = users.get_by_email(conn, body.email)
     if not verify_password(user["password_hash"] if user else None, body.password) or user is None:
@@ -74,7 +86,7 @@ def login(body: LoginIn, response: Response, conn: DbConn):
     return {"user": users.public_user(user)}
 
 
-@router.post("/demo-login")
+@router.post("/demo-login", response_model=UserEnvelope)
 def demo_login(response: Response, conn: DbConn):
     """Skip the login form (DEMO_LOGIN=true): sign in as the shared demo user.
 
@@ -93,7 +105,7 @@ def demo_login(response: Response, conn: DbConn):
     return {"user": users.public_user(user)}
 
 
-@router.post("/logout")
+@router.post("/logout", response_model=SuccessOut)
 def logout(request: Request, response: Response, conn: DbConn):
     token = request.cookies.get(SESSION_COOKIE)
     if token:
@@ -102,12 +114,12 @@ def logout(request: Request, response: Response, conn: DbConn):
     return {"success": True}
 
 
-@router.get("/me")
+@router.get("/me", response_model=UserEnvelope)
 def me(user: CurrentUser):
     return {"user": users.public_user(user)}
 
 
-@router.patch("/me")
+@router.patch("/me", response_model=UserEnvelope)
 def update_me(body: ProfileUpdateIn, user: CurrentUser, conn: DbConn):
     values = body.model_dump(exclude_unset=True, exclude_none=True)
     if "name" in values:
@@ -118,7 +130,7 @@ def update_me(body: ProfileUpdateIn, user: CurrentUser, conn: DbConn):
     return {"user": users.public_user(updated or user)}
 
 
-@router.post("/verify-email")
+@router.post("/verify-email", response_model=VerifyEmailOut)
 def verify_email(body: TokenIn, conn: DbConn):
     uid = users.consume_token(conn, body.token, "verify_email")
     if uid is None:
@@ -127,7 +139,7 @@ def verify_email(body: TokenIn, conn: DbConn):
     return {"user": users.public_user(updated) if updated else None, "message": "メールアドレスを確認しました。"}
 
 
-@router.post("/verify-email/resend")
+@router.post("/verify-email/resend", response_model=MessageOut)
 def resend_verification(user: CurrentUser, conn: DbConn):
     if user["email_verified_at"] is not None:
         return {"success": True, "message": "メールアドレスは確認済みです。"}
@@ -135,7 +147,7 @@ def resend_verification(user: CurrentUser, conn: DbConn):
     return {"success": True, "message": f"{user['email']} 宛に確認メールを再送しました。"}
 
 
-@router.post("/forgot-password")
+@router.post("/forgot-password", response_model=MessageOut)
 def forgot_password(body: ForgotPasswordIn, conn: DbConn):
     user = users.get_by_email(conn, body.email)
     if user is not None:
@@ -148,7 +160,7 @@ def forgot_password(body: ForgotPasswordIn, conn: DbConn):
     }
 
 
-@router.post("/reset-password")
+@router.post("/reset-password", response_model=MessageOut)
 def reset_password(body: ResetPasswordIn, response: Response, conn: DbConn):
     uid = users.consume_token(conn, body.token, "reset_password")
     if uid is None:
