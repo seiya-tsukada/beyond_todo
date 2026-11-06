@@ -8,7 +8,15 @@ from ..db import Conn
 from ..errors import AppError
 from ..repositories import workspace as repo
 
+# Also enforced by the trigger in supabase/migrations/20261106000000_integrity.sql
 MAX_ACTIVE_PRIORITIES_PER_WEEK = 5
+
+
+def capacity_message() -> str:
+    return (
+        f"未完了の最優先事項は週に最大{MAX_ACTIVE_PRIORITIES_PER_WEEK}件までです。"
+        "本当に集中すべきことだけに絞り込みましょう。"
+    )
 
 
 def has_capacity(conn: Conn, user_id: str, target_week: str, exclude_id: str | None = None) -> bool:
@@ -17,11 +25,7 @@ def has_capacity(conn: Conn, user_id: str, target_week: str, exclude_id: str | N
 
 def ensure_capacity(conn: Conn, user_id: str, target_week: str, exclude_id: str | None = None) -> None:
     if not has_capacity(conn, user_id, target_week, exclude_id):
-        raise AppError(
-            400,
-            f"未完了の最優先事項は週に最大{MAX_ACTIVE_PRIORITIES_PER_WEEK}件までです。"
-            "本当に集中すべきことだけに絞り込みましょう。",
-        )
+        raise AppError(400, capacity_message())
 
 
 def ensure_challenge_owned(conn: Conn, user_id: str, challenge_id: Any) -> None:

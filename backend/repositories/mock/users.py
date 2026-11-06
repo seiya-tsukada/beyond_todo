@@ -85,6 +85,10 @@ def consume_token(conn: Any, token: str, purpose: str) -> str | None:
     return DEMO_USER_ID
 
 
+def purge_expired(conn: Any) -> dict[str, int]:
+    return {"sessions": 0, "auth_tokens": 0}
+
+
 # --- Scheduled notifications ---
 def users_due_weekly_review_reminder(conn: Any, week_start: datetime) -> list[dict[str, Any]]:
     return [_demo()]

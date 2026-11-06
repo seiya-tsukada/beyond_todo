@@ -5,17 +5,19 @@
 - ``postgres``: SQL against Supabase / PostgreSQL (``repositories/postgres``).
 - ``mock``: static sample data, nothing is stored (``repositories/mock``).
 
-Both expose the same functions, so callers just use ``repositories.users`` and
-``repositories.workspace``.
+Both expose the same functions (the protocols in ``base.py``), so callers just
+use ``repositories.users`` and ``repositories.workspace``.
 """
 
 from importlib import import_module
+from typing import cast
 
 from ..config import get_settings
+from .base import UsersRepository, WorkspaceRepository
 
 _backend = get_settings().data_backend
 
-users = import_module(f".{_backend}.users", __name__)
-workspace = import_module(f".{_backend}.workspace", __name__)
+users = cast(UsersRepository, import_module(f".{_backend}.users", __name__))
+workspace = cast(WorkspaceRepository, import_module(f".{_backend}.workspace", __name__))
 
 __all__ = ["users", "workspace"]

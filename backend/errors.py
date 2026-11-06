@@ -6,6 +6,7 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
+import psycopg.errors
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -47,7 +48,33 @@ def _validation_message(errors: Sequence[Any]) -> str:
     return "入力内容に誤りがあります。"
 
 
+# Database constraints that back up application checks. They only fire when a
+# check was bypassed or lost a race, and map to the same message as the check.
+def _priority_limit_message() -> str:
+    from .services.priorities import capacity_message  # avoid import cycle
+
+    return capacity_message()
+
+
+_CONSTRAINT_ERRORS: dict[str, tuple[int, Any]] = {
+    "users_email_lower_key": (400, "このメールアドレスは既に登録されています。"),
+    "priorities_weekly_active_limit": (400, _priority_limit_message),
+    "priorities_challenge_same_user_fkey": (400, "紐付ける課題が見つかりません。"),
+    "decision_logs_priority_same_user_fkey": (404, "指定された優先事項が見つかりません。"),
+    "stakeholder_interests_stakeholder_same_user_fkey": (404, "指定されたステークホルダーが見つかりません。"),
+}
+
+
 def install_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(psycopg.errors.IntegrityError)
+    async def _integrity_error(_: Request, exc: psycopg.errors.IntegrityError) -> JSONResponse:
+        known = _CONSTRAINT_ERRORS.get(exc.diag.constraint_name or "")
+        if known is None:
+            logger.exception("Unhandled integrity error", exc_info=exc)
+            return JSONResponse({"error": "サーバーでエラーが発生しました。"}, status_code=500)
+        status, message = known
+        return JSONResponse({"error": message() if callable(message) else message}, status_code=status)
+
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError) -> JSONResponse:
         return JSONResponse({"error": exc.message}, status_code=exc.status_code)

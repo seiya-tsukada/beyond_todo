@@ -137,7 +137,9 @@ def get_stakeholder(conn: Conn, user_id: str, stakeholder_id: str) -> Row | None
     if row is None:
         return None
     expectations = fetch_all(
-        conn, _STAKEHOLDER_INTEREST_SELECT + " where si.stakeholder_id = %s order by si.created_at", (stakeholder_id,)
+        conn,
+        _STAKEHOLDER_INTEREST_SELECT + " where si.stakeholder_id = %s and si.user_id = %s order by si.created_at",
+        (stakeholder_id, user_id),
     )
     return {**row, "interests": expectations}
 

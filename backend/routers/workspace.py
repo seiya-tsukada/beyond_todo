@@ -13,6 +13,17 @@ from ..deps import CurrentUser, DbConn, user_id
 from ..errors import not_found
 from ..repositories import workspace as repo
 from ..schemas import (
+    AutoStockOut,
+    ChallengeOut,
+    DecisionLogOut,
+    InterestOut,
+    MemoConvertOut,
+    PriorityOut,
+    QuickMemoOut,
+    StakeholderInterestOut,
+    StakeholderOut,
+    SuccessOut,
+    WeeklyReviewOut,
     AutoStockIn,
     ChallengeCreate,
     ChallengeUpdate,
@@ -45,17 +56,17 @@ def changes(body: BaseModel, nullable: tuple[str, ...] = ()) -> dict[str, Any]:
 
 
 # --- Challenges ---
-@router.get("/challenges")
+@router.get("/challenges", response_model=list[ChallengeOut])
 def list_challenges(user: CurrentUser, conn: DbConn):
     return repo.list_challenges(conn, user_id(user))
 
 
-@router.post("/challenges", status_code=201)
+@router.post("/challenges", status_code=201, response_model=ChallengeOut)
 def create_challenge(body: ChallengeCreate, user: CurrentUser, conn: DbConn):
     return repo.create_challenge(conn, user_id(user), body.model_dump())
 
 
-@router.put("/challenges/{challenge_id}")
+@router.put("/challenges/{challenge_id}", response_model=ChallengeOut)
 def update_challenge(challenge_id: UUID, body: ChallengeUpdate, user: CurrentUser, conn: DbConn):
     row = repo.update_challenge(conn, user_id(user), str(challenge_id), changes(body))
     if row is None:
@@ -63,7 +74,7 @@ def update_challenge(challenge_id: UUID, body: ChallengeUpdate, user: CurrentUse
     return row
 
 
-@router.delete("/challenges/{challenge_id}")
+@router.delete("/challenges/{challenge_id}", response_model=SuccessOut)
 def delete_challenge(challenge_id: UUID, user: CurrentUser, conn: DbConn):
     if not repo.delete_challenge(conn, user_id(user), str(challenge_id)):
         raise not_found("課題")
@@ -71,12 +82,12 @@ def delete_challenge(challenge_id: UUID, user: CurrentUser, conn: DbConn):
 
 
 # --- Priorities ---
-@router.get("/priorities")
+@router.get("/priorities", response_model=list[PriorityOut])
 def list_priorities(user: CurrentUser, conn: DbConn, target_week: Optional[str] = Query(None)):
     return repo.list_priorities(conn, user_id(user), target_week)
 
 
-@router.post("/priorities", status_code=201)
+@router.post("/priorities", status_code=201, response_model=PriorityOut)
 def create_priority(body: PriorityCreate, user: CurrentUser, conn: DbConn):
     uid = user_id(user)
     values = body.model_dump()
@@ -87,7 +98,7 @@ def create_priority(body: PriorityCreate, user: CurrentUser, conn: DbConn):
     return repo.create_priority(conn, uid, values)
 
 
-@router.put("/priorities/{priority_id}")
+@router.put("/priorities/{priority_id}", response_model=PriorityOut)
 def update_priority(priority_id: UUID, body: PriorityUpdate, user: CurrentUser, conn: DbConn):
     uid, pid = user_id(user), str(priority_id)
     existing = repo.get_priority(conn, uid, pid)
@@ -104,7 +115,7 @@ def update_priority(priority_id: UUID, body: PriorityUpdate, user: CurrentUser, 
     return repo.update_priority(conn, uid, pid, values)
 
 
-@router.delete("/priorities/{priority_id}")
+@router.delete("/priorities/{priority_id}", response_model=SuccessOut)
 def delete_priority(priority_id: UUID, user: CurrentUser, conn: DbConn):
     if not repo.delete_priority(conn, user_id(user), str(priority_id)):
         raise not_found("優先事項")
@@ -112,17 +123,17 @@ def delete_priority(priority_id: UUID, user: CurrentUser, conn: DbConn):
 
 
 # --- Interests ---
-@router.get("/interests")
+@router.get("/interests", response_model=list[InterestOut])
 def list_interests(user: CurrentUser, conn: DbConn):
     return repo.list_interests(conn, user_id(user))
 
 
-@router.post("/interests", status_code=201)
+@router.post("/interests", status_code=201, response_model=InterestOut)
 def create_interest(body: InterestCreate, user: CurrentUser, conn: DbConn):
     return repo.create_interest(conn, user_id(user), body.model_dump())
 
 
-@router.put("/interests/{interest_id}")
+@router.put("/interests/{interest_id}", response_model=InterestOut)
 def update_interest(interest_id: UUID, body: InterestUpdate, user: CurrentUser, conn: DbConn):
     row = repo.update_interest(conn, user_id(user), str(interest_id), changes(body))
     if row is None:
@@ -130,7 +141,7 @@ def update_interest(interest_id: UUID, body: InterestUpdate, user: CurrentUser, 
     return row
 
 
-@router.delete("/interests/{interest_id}")
+@router.delete("/interests/{interest_id}", response_model=SuccessOut)
 def delete_interest(interest_id: UUID, user: CurrentUser, conn: DbConn):
     if not repo.delete_interest(conn, user_id(user), str(interest_id)):
         raise not_found("興味関心")
@@ -138,17 +149,17 @@ def delete_interest(interest_id: UUID, user: CurrentUser, conn: DbConn):
 
 
 # --- Stakeholders ---
-@router.get("/stakeholders")
+@router.get("/stakeholders", response_model=list[StakeholderOut])
 def list_stakeholders(user: CurrentUser, conn: DbConn):
     return repo.list_stakeholders(conn, user_id(user))
 
 
-@router.post("/stakeholders", status_code=201)
+@router.post("/stakeholders", status_code=201, response_model=StakeholderOut)
 def create_stakeholder(body: StakeholderCreate, user: CurrentUser, conn: DbConn):
     return repo.create_stakeholder(conn, user_id(user), body.model_dump())
 
 
-@router.put("/stakeholders/{stakeholder_id}")
+@router.put("/stakeholders/{stakeholder_id}", response_model=StakeholderOut)
 def update_stakeholder(stakeholder_id: UUID, body: StakeholderUpdate, user: CurrentUser, conn: DbConn):
     row = repo.update_stakeholder(conn, user_id(user), str(stakeholder_id), changes(body))
     if row is None:
@@ -156,14 +167,14 @@ def update_stakeholder(stakeholder_id: UUID, body: StakeholderUpdate, user: Curr
     return row
 
 
-@router.delete("/stakeholders/{stakeholder_id}")
+@router.delete("/stakeholders/{stakeholder_id}", response_model=SuccessOut)
 def delete_stakeholder(stakeholder_id: UUID, user: CurrentUser, conn: DbConn):
     if not repo.delete_stakeholder(conn, user_id(user), str(stakeholder_id)):
         raise not_found("ステークホルダー")
     return SUCCESS
 
 
-@router.post("/stakeholders/{stakeholder_id}/interests", status_code=201)
+@router.post("/stakeholders/{stakeholder_id}/interests", status_code=201, response_model=StakeholderInterestOut)
 def create_stakeholder_interest(
     stakeholder_id: UUID, body: StakeholderInterestCreate, user: CurrentUser, conn: DbConn
 ):
@@ -173,7 +184,7 @@ def create_stakeholder_interest(
     return repo.create_stakeholder_interest(conn, uid, str(stakeholder_id), body.model_dump())
 
 
-@router.put("/stakeholder-interests/{interest_id}")
+@router.put("/stakeholder-interests/{interest_id}", response_model=StakeholderInterestOut)
 def update_stakeholder_interest(
     interest_id: UUID, body: StakeholderInterestUpdate, user: CurrentUser, conn: DbConn
 ):
@@ -183,7 +194,7 @@ def update_stakeholder_interest(
     return row
 
 
-@router.delete("/stakeholder-interests/{interest_id}")
+@router.delete("/stakeholder-interests/{interest_id}", response_model=SuccessOut)
 def delete_stakeholder_interest(interest_id: UUID, user: CurrentUser, conn: DbConn):
     if not repo.delete_stakeholder_interest(conn, user_id(user), str(interest_id)):
         raise not_found("期待事項")
@@ -191,18 +202,18 @@ def delete_stakeholder_interest(interest_id: UUID, user: CurrentUser, conn: DbCo
 
 
 # --- Weekly reviews ---
-@router.get("/reviews")
+@router.get("/reviews", response_model=list[WeeklyReviewOut])
 def list_reviews(user: CurrentUser, conn: DbConn):
     return repo.list_reviews(conn, user_id(user))
 
 
-@router.get("/reviews/latest")
+@router.get("/reviews/latest", response_model=Optional[WeeklyReviewOut])
 def latest_review(user: CurrentUser, conn: DbConn):
     rows = repo.list_reviews(conn, user_id(user), limit=1)
     return rows[0] if rows else None
 
 
-@router.post("/reviews", status_code=201)
+@router.post("/reviews", status_code=201, response_model=WeeklyReviewOut)
 def create_review(body: WeeklyReviewCreate, user: CurrentUser, conn: DbConn):
     values = body.model_dump()
     monday, sunday = week_bounds(today())
@@ -212,12 +223,12 @@ def create_review(body: WeeklyReviewCreate, user: CurrentUser, conn: DbConn):
 
 
 # --- Decision logs ---
-@router.get("/decision-logs")
+@router.get("/decision-logs", response_model=list[DecisionLogOut])
 def list_decision_logs(user: CurrentUser, conn: DbConn):
     return repo.list_decision_logs(conn, user_id(user))
 
 
-@router.post("/decision-logs", status_code=201)
+@router.post("/decision-logs", status_code=201, response_model=DecisionLogOut)
 def create_decision_log(body: DecisionLogCreate, user: CurrentUser, conn: DbConn):
     uid = user_id(user)
     values = body.model_dump()
@@ -226,7 +237,7 @@ def create_decision_log(body: DecisionLogCreate, user: CurrentUser, conn: DbConn
     return repo.create_decision_log(conn, uid, values)
 
 
-@router.delete("/decision-logs/{log_id}")
+@router.delete("/decision-logs/{log_id}", response_model=SuccessOut)
 def delete_decision_log(log_id: UUID, user: CurrentUser, conn: DbConn):
     if not repo.delete_decision_log(conn, user_id(user), str(log_id)):
         raise not_found("意思決定ログ")
@@ -234,24 +245,24 @@ def delete_decision_log(log_id: UUID, user: CurrentUser, conn: DbConn):
 
 
 # --- Quick memos ---
-@router.get("/memos")
+@router.get("/memos", response_model=list[QuickMemoOut])
 def list_memos(user: CurrentUser, conn: DbConn):
     return repo.list_memos(conn, user_id(user))
 
 
-@router.post("/memos", status_code=201)
+@router.post("/memos", status_code=201, response_model=QuickMemoOut)
 def create_memo(body: QuickMemoCreate, user: CurrentUser, conn: DbConn):
     return repo.create_memo(conn, user_id(user), {"content": body.content.strip(), "tags": body.tags})
 
 
 # Registered before /memos/{memo_id} routes so "auto-stock" is never parsed as an id
-@router.post("/memos/auto-stock")
+@router.post("/memos/auto-stock", response_model=AutoStockOut)
 def auto_stock_memos(user: CurrentUser, conn: DbConn, body: Optional[AutoStockIn] = None):
     memo_ids = [str(i) for i in body.memo_ids] if body and body.memo_ids is not None else None
     return memo_service.auto_stock(conn, user_id(user), memo_ids)
 
 
-@router.put("/memos/{memo_id}")
+@router.put("/memos/{memo_id}", response_model=QuickMemoOut)
 def update_memo(memo_id: UUID, body: QuickMemoUpdate, user: CurrentUser, conn: DbConn):
     values = changes(body)
     if "content" in values:
@@ -262,13 +273,13 @@ def update_memo(memo_id: UUID, body: QuickMemoUpdate, user: CurrentUser, conn: D
     return row
 
 
-@router.delete("/memos/{memo_id}")
+@router.delete("/memos/{memo_id}", response_model=SuccessOut)
 def delete_memo(memo_id: UUID, user: CurrentUser, conn: DbConn):
     if not repo.delete_memo(conn, user_id(user), str(memo_id)):
         raise not_found("メモ")
     return SUCCESS
 
 
-@router.post("/memos/{memo_id}/convert")
+@router.post("/memos/{memo_id}/convert", response_model=MemoConvertOut)
 def convert_memo(memo_id: UUID, body: MemoConvertIn, user: CurrentUser, conn: DbConn):
     return memo_service.convert(conn, user_id(user), str(memo_id), body)

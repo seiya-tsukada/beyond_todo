@@ -36,6 +36,10 @@ def weekly_review_reminder(request: Request):
     week = current_week()
     sent = failed = 0
 
+    # Housekeeping: expired sessions and spent e-mail tokens (only hashes are stored)
+    with connect() as conn:
+        purged = users.purge_expired(conn)
+
     # Commit per user so that one failure does not roll back deliveries already made
     with connect() as conn:
         recipients = users.users_due_weekly_review_reminder(conn, week_start_datetime(today()))
@@ -59,5 +63,5 @@ def weekly_review_reminder(request: Request):
                 users.release_delivery(conn, uid, WEEKLY_REVIEW_REMINDER, week)
                 failed += 1
 
-    logger.info("weekly review reminder: week=%s sent=%d failed=%d", week, sent, failed)
-    return {"week": week, "sent": sent, "failed": failed}
+    logger.info("weekly review reminder: week=%s sent=%d failed=%d purged=%s", week, sent, failed, purged)
+    return {"week": week, "sent": sent, "failed": failed, "purged": purged}

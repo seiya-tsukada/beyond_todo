@@ -1,12 +1,18 @@
-"""Request bodies. Responses are plain rows (dicts) serialized by FastAPI."""
+"""API models.
+
+Request bodies (``*In`` / ``*Create`` / ``*Update``) validate client input; response
+models (``*Out``) define what the API returns and mirror ``src/types/index.ts``.
+Repositories return plain rows (dicts) that FastAPI validates against the
+response model, so secrets such as ``password_hash`` can never leak.
+"""
 
 from __future__ import annotations
 
-from datetime import date
-from typing import Any, Literal, Optional
+from datetime import date, datetime
+from typing import Any, Literal, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 ChallengeStatus = Literal["Open", "In Progress", "Resolved"]
 Importance = Literal["High", "Medium", "Low"]
@@ -191,3 +197,171 @@ class AutoStockIn(BaseModel):
 # --- Insights ---
 class AnalyzeIn(BaseModel):
     userQuery: Optional[str] = Field(default=None, max_length=2000)
+
+
+# ===========================================================================
+# Responses
+# ===========================================================================
+class _Out(BaseModel):
+    # Rows carry extra columns (e.g. password_hash on users); they are dropped.
+    model_config = ConfigDict(extra="ignore")
+
+
+class _Row(_Out):
+    id: UUID
+    user_id: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class SuccessOut(_Out):
+    success: bool = True
+
+
+class MessageOut(SuccessOut):
+    message: str
+
+
+# --- Auth ---
+class UserOut(_Out):
+    id: UUID
+    email: str
+    name: str
+    title: Optional[str] = None
+    email_verified_at: Optional[datetime] = None
+    notify_weekly_review: bool
+    created_at: datetime
+
+
+class UserEnvelope(_Out):
+    user: UserOut
+
+
+class RegisterOut(UserEnvelope):
+    message: str
+
+
+class VerifyEmailOut(_Out):
+    user: Optional[UserOut] = None
+    message: str
+
+
+# --- Workspace ---
+class ChallengeOut(_Row):
+    title: str
+    description: str
+    status: ChallengeStatus
+    importance: Importance
+
+
+class PriorityOut(_Row):
+    challenge_id: Optional[UUID] = None
+    challenge_title: Optional[str] = None
+    title: str
+    description: str
+    reason: str
+    status: PriorityStatus
+    target_week: str
+
+
+class InterestOut(_Row):
+    title: str
+    description: str
+    category: str
+    status: InterestStatus
+    who: str
+
+
+class StakeholderInterestOut(_Row):
+    stakeholder_id: UUID
+    stakeholder_name: Optional[str] = None
+    title: str
+    description: str
+    importance: Importance
+    status: StakeholderInterestStatus
+
+
+class StakeholderOut(_Row):
+    name: str
+    relationship: Relationship
+    description: str
+    interests: list[StakeholderInterestOut] = []
+
+
+class WeeklyReviewOut(_Row):
+    week_start: date
+    week_end: date
+    summary: str
+    completed_priorities: list[str]
+    incomplete_priorities: list[str]
+    personal_reflection: str
+    decision_reflection: str
+    next_week_actions: list[str]
+    answers: dict[str, str]
+
+
+class DecisionLogOut(_Row):
+    priority_id: Optional[UUID] = None
+    decision: str
+    reason: str
+    outcome: str
+
+
+class QuickMemoOut(_Row):
+    content: str
+    tags: list[str]
+    converted_to: Optional[MemoTarget] = None
+
+
+class MemoConvertOut(SuccessOut):
+    createdEntity: Union[PriorityOut, StakeholderInterestOut, InterestOut, ChallengeOut]
+    convertedType: MemoTarget
+
+
+class StockedCounts(_Out):
+    priority: int
+    challenge: int
+    interest: int
+
+
+class AutoStockOut(SuccessOut):
+    processedCount: int
+    skippedCount: int
+    stockedCounts: StockedCounts
+
+
+# --- Insights / dashboard ---
+class AIInsightOut(_Out):
+    id: str
+    type: str
+    title: str
+    message: str
+    recommendation: str
+    question: str
+    tag: str
+    created_at: datetime
+
+
+class InsightsOut(_Out):
+    insights: list[AIInsightOut]
+
+
+class DashboardMetrics(_Out):
+    openChallengesCount: int
+    highImportanceChallengesCount: int
+    activePrioritiesCount: int
+    completedPrioritiesCount: int
+    exploringInterestsCount: int
+    stakeholderCount: int
+    interestToActionRatio: int
+
+
+class DashboardOverviewOut(_Out):
+    challenges: list[ChallengeOut]
+    priorities: list[PriorityOut]
+    interests: list[InterestOut]
+    stakeholders: list[StakeholderOut]
+    aiInsights: list[AIInsightOut]
+    latestReview: Optional[WeeklyReviewOut] = None
+    targetWeek: str
+    metrics: DashboardMetrics
