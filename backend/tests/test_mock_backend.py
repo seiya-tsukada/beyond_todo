@@ -49,6 +49,8 @@ assert c.post("/api/memos/auto-stock", json={}).status_code == 200
 
 r = c.get("/api/cron/weekly-review-reminder", headers={"Authorization": "Bearer s"})
 assert r.json()["sent"] == 1, r.text
+r = c.get("/api/cron/keepalive", headers={"Authorization": "Bearer s"})
+assert r.json() == {"ok": True, "skipped": "mock"}, r.text
 print("ok")
 """
 

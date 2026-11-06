@@ -42,6 +42,7 @@ supabase/migrations/         DB スキーマ
   - 新規登録時のメールアドレス確認（24時間有効）
   - パスワード再設定（1時間有効）／再設定完了のセキュリティ通知
   - 週次レビューのリマインド: 日曜 18:00 JST（Vercel Cron `0 9 * * 0` UTC）。メール確認済み・設定でON・その週の振り返り未作成のユーザーにのみ送信し、同じ週に二重送信しません。同じジョブで期限切れのセッションと使用済み・期限切れのトークンを削除します。
+- DB キープアライブ: 毎日 03:00 JST（Vercel Cron `0 18 * * *` UTC）に `/api/cron/keepalive` が読み取り専用の軽いクエリを1回実行し、Supabase 無料プランの非アクティブによる一時停止を防ぎます。READ ONLY トランザクション・5秒タイムアウトで、データの変更やメール送信は行いません（`DATA_BACKEND=mock` では何もしません）。
 - ダッシュボード表示時はルールベースのインサイト、「再分析」ボタンで Gemini を呼び出します。
 
 ## 環境構成（dev / production）
@@ -83,7 +84,7 @@ Vercel の Project Settings → Environment Variables（Production）に `.env.e
 | `DEMO_LOGIN` | | `true`（既定）ならログイン画面に「ログインをスキップ」を表示し、共用のデモユーザー（demo@example.com）で入れる。本運用前に `false` にする |
 | `DATABASE_URL` | ○※ | Supabase の Transaction pooler（ポート 6543）の接続文字列。※`DATA_BACKEND=mock` なら不要 |
 | `RESEND_API_KEY` / `MAIL_FROM` | ○※ | Resend の API キーと送信元。※`MAIL_BACKEND=log` なら不要 |
-| `CRON_SECRET` | | 十分に長いランダム文字列（Vercel Cron の認証）。未設定の間は週次リマインドの Cron が動きません |
+| `CRON_SECRET` | | 十分に長いランダム文字列（Vercel Cron の認証）。未設定の間は週次リマインドとキープアライブの Cron が動きません |
 | `APP_URL` | | 本番URL（`https://` 必須。メール内リンクに使用）。未設定なら Vercel のデプロイ URL（`VERCEL_PROJECT_PRODUCTION_URL`）を使用 |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | | 未設定ならルールベースのインサイト |
 | `SESSION_TTL_DAYS` / `APP_TIMEZONE` | | 既定値: `30` / `Asia/Tokyo` |
@@ -241,4 +242,4 @@ GitHub Flow を基本にします。検証は dev（docker compose）で行い�
 
 ## デプロイ
 
-Vercel にリポジトリを接続すれば、`vercel.json` に従って `dist/` の静的配信、`api/index.py` の Python Function、週次 Cron が構成されます。
+Vercel にリポジトリを接続すれば、`vercel.json` に従って `dist/` の静的配信、`api/index.py` の Python Function、週次リマインドと日次キープアライブの Cron が構成されます。
