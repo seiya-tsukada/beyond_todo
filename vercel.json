@@ -10,5 +10,8 @@
     }
   },
   "rewrites": [{ "source": "/api/(.*)", "destination": "/api/index" }],
-  "crons": [{ "path": "/api/cron/weekly-review-reminder", "schedule": "0 9 * * 0" }]
+  "crons": [
+    { "path": "/api/cron/weekly-review-reminder", "schedule": "0 9 * * 0" },
+    { "path": "/api/cron/keepalive", "schedule": "0 18 * * *" }
+  ]
 }

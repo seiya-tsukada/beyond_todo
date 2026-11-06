@@ -65,3 +65,27 @@ def weekly_review_reminder(request: Request):
 
     logger.info("weekly review reminder: week=%s sent=%d failed=%d purged=%s", week, sent, failed, purged)
     return {"week": week, "sent": sent, "failed": failed, "purged": purged}
+
+
+@router.get("/keepalive")
+def keepalive(request: Request):
+    """Daily DB touch so a Supabase Free project is not paused for inactivity.
+
+    Read-only by construction: the transaction is READ ONLY (any write would
+    fail), uses a short statement timeout, sends no e-mail and changes no data,
+    so it has no effect on users. Supabase counts user queries against the
+    database as activity, so this reads an application table rather than
+    running a bare `select 1`.
+    """
+    _authorize(request)
+    if get_settings().data_backend == "mock":
+        return {"ok": True, "skipped": "mock"}
+    try:
+        with connect() as conn:
+            conn.read_only = True
+            conn.execute("set local statement_timeout = '5s'")
+            conn.execute("select 1 from beyond_todo.users limit 1").fetchall()
+    except Exception:
+        logger.exception("keepalive: database query failed")
+        raise AppError(503, "Database unavailable")
+    return {"ok": True}
