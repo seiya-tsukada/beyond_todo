@@ -95,6 +95,7 @@ cat supabase/migrations/*.sql | psql "<Session pooler の接続文字列>" -v ON
 | `row_counts.sql` | 全テーブルの行数（読み取りのみ） | `psql "$DATABASE_URL" -f supabase/maintenance/row_counts.sql` |
 | `purge_expired.sql` | 期限切れセッション・期限切れ/使用済みトークンを削除（週次 Cron と同じ処理） | `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/maintenance/purge_expired.sql` |
 | `delete_user.sql` | 指定ユーザーと、その全データを削除 | `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v email=someone@example.com -f supabase/maintenance/delete_user.sql` |
+| `truncate_users.sql` | **全ユーザーを削除**（セッション・トークン・ユーザーの全データも CASCADE で削除。インデックスも空の状態から作り直し） | `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v confirm=yes -f supabase/maintenance/truncate_users.sql` |
 | `truncate_data.sql` | **全データを削除**（テーブル・制約・トリガーは残す） | `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v confirm=yes -f supabase/maintenance/truncate_data.sql` |
 | `drop_schema.sql` | **`beyond_todo` スキーマごと削除** | 下記の作り直しで使用 |
 
@@ -104,7 +105,7 @@ cat supabase/migrations/*.sql | psql "<Session pooler の接続文字列>" -v ON
 cat supabase/maintenance/drop_schema.sql supabase/migrations/*.sql | psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v confirm=yes -1
 ```
 
-- `truncate_data.sql` と `drop_schema.sql` は `-v confirm=yes` がないとエラーで止まります（本番データの誤削除防止）。
+- `truncate_users.sql`・`truncate_data.sql`・`drop_schema.sql` は `-v confirm=yes` がないとエラーで止まります（本番データの誤削除防止）。
 - 作り直しても適用されるマイグレーションは同じなので、`supabase db push` の適用履歴とは食い違いません。
 - ローカル（docker compose）の DB にも同じファイルが使えます（`DATABASE_URL=postgresql://postgres:postgres@localhost:54322/beyond_todo`）。
 
