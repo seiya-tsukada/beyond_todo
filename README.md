@@ -134,6 +134,7 @@ Supabase と Resend の接続前は、環境変数を何も設定しなくても
 - データは `backend/repositories/mock/_data.py` の固定データです。作成・更新・削除は成功レスポンスを返しますが保存されないため、再読み込みすると元に戻ります。新規登録も成功しますが、ログイン後はデモユーザーになります。
 - メールは送信されず、内容が Vercel の Function ログに出ます。
 - `GET /api/health` で `{"data": "mock", "mail": "log"}` のように現在のモードを確認できます。
+- `GET /api/health` は DB に接続しない liveness です。DB への疎通（`select 1`）まで確認したい監視には `GET /api/health/ready` を使います（DB に届かなければ `503`、モックでは `{"db": "skipped"}`）。
 
 Supabase に切り替えるときは、`DATABASE_URL` を設定して `DATA_BACKEND` を削除（または `postgres`）にします。Resend も同様に `RESEND_API_KEY` / `MAIL_FROM` を設定して `MAIL_BACKEND` を削除します。
 

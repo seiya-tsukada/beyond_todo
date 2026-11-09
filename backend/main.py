@@ -9,10 +9,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from .config import get_settings
+from .db import ping
 from .errors import install_error_handlers
 from .routers import auth, cron, overview, workspace
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Fail fast on a misconfigured deployment (production checks required variables)
 _settings = get_settings()
@@ -47,6 +49,24 @@ async def reject_cross_site_writes(request: Request, call_next):
 def health():
     s = get_settings()
     return {"status": "ok", "env": s.app_env, "data": s.data_backend, "mail": s.mail_backend, "demo_login": s.demo_login}
+
+
+@app.get("/api/health/ready")
+def health_ready():
+    """Readiness: 200 only when the database is reachable (`select 1`), else 503.
+
+    Opens a database connection on every call, so the UI keeps using the cheap
+    /api/health; this one is for uptime monitors and deploy checks.
+    """
+    s = get_settings()
+    if s.data_backend == "mock":
+        return {"status": "ok", "db": "skipped"}
+    try:
+        ping()
+    except Exception:
+        logger.exception("health/ready: database check failed")
+        return JSONResponse({"status": "error", "db": "unavailable"}, status_code=503)
+    return {"status": "ok", "db": "ok"}
 
 
 app.include_router(auth.router)
