@@ -36,6 +36,26 @@ def connect() -> AbstractContextManager[Conn]:
     return psycopg.connect(settings.database_url, row_factory=dict_row, prepare_threshold=None)
 
 
+def ping(timeout_s: int = 3) -> None:
+    """Check that the database is reachable, failing fast; raises when it is not.
+
+    Runs `select 1` in a READ ONLY transaction with short connect/statement
+    timeouts, so it never waits long and never changes data. No-op for the mock backend.
+    """
+    settings = get_settings()
+    if settings.data_backend == "mock":
+        return
+    if not settings.database_url:
+        raise RuntimeError("DATABASE_URL is not configured")
+    timeout_s = int(timeout_s)
+    with psycopg.connect(
+        settings.database_url, row_factory=dict_row, prepare_threshold=None, connect_timeout=timeout_s
+    ) as conn:
+        conn.read_only = True
+        conn.execute(f"set local statement_timeout = '{timeout_s}s'")
+        conn.execute("select 1").fetchone()
+
+
 def get_conn() -> Iterator[Conn]:
     """FastAPI dependency: one transaction per request."""
     with connect() as conn:

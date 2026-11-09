@@ -18,6 +18,7 @@ from backend.repositories.mock.users import DEMO_EMAIL, DEMO_PASSWORD
 
 c = TestClient(app)
 assert c.get("/api/health").json()["data"] == "mock"
+assert c.get("/api/health/ready").json() == {"status": "ok", "db": "skipped"}
 assert c.get("/api/auth/me").status_code == 401
 assert c.post("/api/auth/login", json={"email": DEMO_EMAIL, "password": "wrong-password"}).status_code == 401
 r = c.post("/api/auth/login", json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD})
