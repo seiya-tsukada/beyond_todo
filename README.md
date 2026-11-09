@@ -69,9 +69,44 @@ supabase/migrations/         DB スキーマ
 
 ### 1. Supabase
 
-1. `supabase/migrations/*.sql` を SQL Editor で実行（または `supabase db push`）。
+1. スキーマを作成する（下記「DB の初期化（Supabase + psql）」）。
 2. Project Settings → Database → Connection string の **Transaction pooler**（ポート 6543）を `DATABASE_URL` に設定。
 3. `beyond_todo` スキーマは API（PostgREST）に公開しないでください（Exposed schemas に追加不要）。
+
+### DB の初期化（Supabase + psql）
+
+Supabase の接続文字列（Project Settings → Database → Connection string の **Session pooler**、ポート 5432）を使い、ローカルから次の1行で全マイグレーションを適用します。
+
+```bash
+cat supabase/migrations/*.sql | psql "<Session pooler の接続文字列>" -v ON_ERROR_STOP=1 -1
+```
+
+- `-1` で全体を1トランザクションで実行するため、途中で失敗しても何も変更されません。
+- マイグレーションは冪等（既にあるテーブル・制約・インデックスはスキップ）なので、適用済みの DB に再実行しても何も変わりません。追加したマイグレーションだけを反映したいときも同じコマンドで構いません。
+- `supabase db push --db-url "<同じ URL>"` でも適用できます（こちらは適用履歴を `supabase_migrations.schema_migrations` に記録します）。
+- パスワードに記号が含まれる場合は URL エンコードしてください。以降のコマンドは `export DATABASE_URL="<同じ URL>"` しておくと `"$DATABASE_URL"` で書けます。
+
+### メンテナンス用 SQL（`supabase/maintenance/`）
+
+`supabase/migrations/` の外に置いているため、`supabase db push` やローカルの `migrate` では実行されません。手動で `psql` から使います。
+
+| ファイル | 内容 | 実行例 |
+| --- | --- | --- |
+| `row_counts.sql` | 全テーブルの行数（読み取りのみ） | `psql "$DATABASE_URL" -f supabase/maintenance/row_counts.sql` |
+| `purge_expired.sql` | 期限切れセッション・期限切れ/使用済みトークンを削除（週次 Cron と同じ処理） | `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/maintenance/purge_expired.sql` |
+| `delete_user.sql` | 指定ユーザーと、その全データを削除 | `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v email=someone@example.com -f supabase/maintenance/delete_user.sql` |
+| `truncate_data.sql` | **全データを削除**（テーブル・制約・トリガーは残す） | `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v confirm=yes -f supabase/maintenance/truncate_data.sql` |
+| `drop_schema.sql` | **`beyond_todo` スキーマごと削除** | 下記の作り直しで使用 |
+
+スキーマを作り直す（全削除 → 全マイグレーション適用を1トランザクションで実行）:
+
+```bash
+cat supabase/maintenance/drop_schema.sql supabase/migrations/*.sql | psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -v confirm=yes -1
+```
+
+- `truncate_data.sql` と `drop_schema.sql` は `-v confirm=yes` がないとエラーで止まります（本番データの誤削除防止）。
+- 作り直しても適用されるマイグレーションは同じなので、`supabase db push` の適用履歴とは食い違いません。
+- ローカル（docker compose）の DB にも同じファイルが使えます（`DATABASE_URL=postgresql://postgres:postgres@localhost:54322/beyond_todo`）。
 
 ### 2. 環境変数（Vercel）
 
@@ -238,7 +273,7 @@ GitHub Flow を基本にします。検証は dev（docker compose）で行い�
 - 作業は `main` から短命ブランチを切る。命名: `feat/…`（機能）, `fix/…`（不具合）, `chore/…`（設定・依存・環境）, `docs/…`, `refactor/…`。
 - PR の動作確認はローカルの docker compose で行う（テスト・`npm run lint` も通す）。
 - マージは Squash merge、マージ後はブランチを削除。
-- DB 変更は `supabase/migrations/` に新しいファイルを追加する形で行い（既存ファイルは書き換えない）、本番への適用はマージ後に `supabase db push`（将来的には CI から）。
+- DB 変更は `supabase/migrations/` に新しいファイルを追加する形で行い（既存ファイルは書き換えない）、本番への適用はマージ後に `supabase db push` または上記の `psql` ワンライナー（将来的には CI から）。マイグレーションは再実行しても安全なように冪等に書く（`if not exists`、`create or replace`、制約・列の追加は存在チェック付きの `do` ブロック）。
 
 ## デプロイ
 

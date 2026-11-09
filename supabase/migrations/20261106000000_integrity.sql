@@ -11,17 +11,33 @@
 -- 4. Indexes for purging expired sessions / one-time tokens.
 --
 -- Requires PostgreSQL 15+ (ON DELETE SET NULL with a column list).
+--
+-- Idempotent: constraints / columns are added only when missing, everything
+-- else uses IF [NOT] EXISTS or CREATE OR REPLACE, so re-running is a no-op.
 -- ========================================================
 
 -- --------------------------------------------------------
 -- 1. Same-user composite foreign keys
 -- --------------------------------------------------------
-alter table beyond_todo.challenges
-  add constraint challenges_id_user_key unique (id, user_id);
-alter table beyond_todo.priorities
-  add constraint priorities_id_user_key unique (id, user_id);
-alter table beyond_todo.stakeholders
-  add constraint stakeholders_id_user_key unique (id, user_id);
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['challenges', 'priorities', 'stakeholders']
+  loop
+    if not exists (
+      select 1 from pg_constraint
+      where conrelid = format('beyond_todo.%I', t)::regclass
+        and conname = t || '_id_user_key'
+    ) then
+      execute format(
+        'alter table beyond_todo.%I add constraint %I unique (id, user_id)',
+        t, t || '_id_user_key'
+      );
+    end if;
+  end loop;
+end;
+$$;
 
 -- Optional links that point at another user's row (impossible through the API)
 -- are cleared rather than failing the migration.
@@ -36,29 +52,35 @@ where priority_id is not null
     select 1 from beyond_todo.priorities p where p.id = l.priority_id and p.user_id = l.user_id
   );
 
-alter table beyond_todo.priorities
-  drop constraint priorities_challenge_id_fkey,
-  add constraint priorities_challenge_same_user_fkey
-    foreign key (challenge_id, user_id)
-    references beyond_todo.challenges (id, user_id)
-    on delete set null (challenge_id);
+-- Replace the single-column FKs from init.sql with same-user composite FKs.
+do $$
+declare
+  fk record;
+begin
+  for fk in
+    select * from (values
+      ('priorities', 'priorities_challenge_id_fkey', 'priorities_challenge_same_user_fkey',
+       'foreign key (challenge_id, user_id) references beyond_todo.challenges (id, user_id) on delete set null (challenge_id)'),
+      ('decision_logs', 'decision_logs_priority_id_fkey', 'decision_logs_priority_same_user_fkey',
+       'foreign key (priority_id, user_id) references beyond_todo.priorities (id, user_id) on delete set null (priority_id)'),
+      ('stakeholder_interests', 'stakeholder_interests_stakeholder_id_fkey', 'stakeholder_interests_stakeholder_same_user_fkey',
+       'foreign key (stakeholder_id, user_id) references beyond_todo.stakeholders (id, user_id) on delete cascade')
+    ) as v(tbl, old_name, new_name, definition)
+  loop
+    execute format('alter table beyond_todo.%I drop constraint if exists %I', fk.tbl, fk.old_name);
+    if not exists (
+      select 1 from pg_constraint
+      where conrelid = format('beyond_todo.%I', fk.tbl)::regclass
+        and conname = fk.new_name
+    ) then
+      execute format('alter table beyond_todo.%I add constraint %I %s', fk.tbl, fk.new_name, fk.definition);
+    end if;
+  end loop;
+end;
+$$;
 
-alter table beyond_todo.decision_logs
-  drop constraint decision_logs_priority_id_fkey,
-  add constraint decision_logs_priority_same_user_fkey
-    foreign key (priority_id, user_id)
-    references beyond_todo.priorities (id, user_id)
-    on delete set null (priority_id);
-
-alter table beyond_todo.stakeholder_interests
-  drop constraint stakeholder_interests_stakeholder_id_fkey,
-  add constraint stakeholder_interests_stakeholder_same_user_fkey
-    foreign key (stakeholder_id, user_id)
-    references beyond_todo.stakeholders (id, user_id)
-    on delete cascade;
-
-create index priorities_challenge_idx on beyond_todo.priorities (challenge_id) where challenge_id is not null;
-create index decision_logs_priority_idx on beyond_todo.decision_logs (priority_id) where priority_id is not null;
+create index if not exists priorities_challenge_idx on beyond_todo.priorities (challenge_id) where challenge_id is not null;
+create index if not exists decision_logs_priority_idx on beyond_todo.decision_logs (priority_id) where priority_id is not null;
 
 -- --------------------------------------------------------
 -- 2. Weekly limit of unfinished priorities
@@ -105,22 +127,33 @@ begin
 end;
 $$;
 
-create trigger enforce_weekly_priority_limit
+create or replace trigger enforce_weekly_priority_limit
   before insert or update on beyond_todo.priorities
   for each row execute function beyond_todo.enforce_weekly_priority_limit();
 
 -- --------------------------------------------------------
 -- 3. decision_logs.updated_at
 -- --------------------------------------------------------
-alter table beyond_todo.decision_logs
-  add column updated_at timestamptz not null default now();
-update beyond_todo.decision_logs set updated_at = created_at;
+-- Backfill from created_at only when the column is first added, so a re-run
+-- never overwrites real edit times.
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'beyond_todo' and table_name = 'decision_logs' and column_name = 'updated_at'
+  ) then
+    alter table beyond_todo.decision_logs
+      add column updated_at timestamptz not null default now();
+    update beyond_todo.decision_logs set updated_at = created_at;
+  end if;
+end;
+$$;
 
-create trigger set_updated_at before update on beyond_todo.decision_logs
+create or replace trigger set_updated_at before update on beyond_todo.decision_logs
   for each row execute function beyond_todo.set_updated_at();
 
 -- --------------------------------------------------------
 -- 4. Expiry indexes (purged by the scheduled job)
 -- --------------------------------------------------------
-create index sessions_expires_idx on beyond_todo.sessions (expires_at);
-create index auth_tokens_expires_idx on beyond_todo.auth_tokens (expires_at);
+create index if not exists sessions_expires_idx on beyond_todo.sessions (expires_at);
+create index if not exists auth_tokens_expires_idx on beyond_todo.auth_tokens (expires_at);

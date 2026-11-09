@@ -6,6 +6,10 @@
 -- The backend connects with the database owner role; the schema is NOT exposed
 -- through PostgREST, and RLS is enabled without policies as defense in depth so
 -- that the anon / authenticated roles can never read application data.
+--
+-- Idempotent: every statement is skipped (or replaced in place) when the object
+-- already exists, so re-running this file on an initialized database is a no-op.
+-- Requires PostgreSQL 14+ (CREATE OR REPLACE TRIGGER).
 -- ========================================================
 
 create schema if not exists beyond_todo;
@@ -28,7 +32,7 @@ $$;
 -- Users & authentication
 -- --------------------------------------------------------
 
-create table beyond_todo.users (
+create table if not exists beyond_todo.users (
   id uuid primary key default gen_random_uuid(),
   email text not null,
   password_hash text not null,
@@ -39,20 +43,20 @@ create table beyond_todo.users (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create unique index users_email_lower_key on beyond_todo.users (lower(email));
+create unique index if not exists users_email_lower_key on beyond_todo.users (lower(email));
 
 -- Login sessions. Only the SHA-256 hash of the session token is stored.
-create table beyond_todo.sessions (
+create table if not exists beyond_todo.sessions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   token_hash text not null unique,
   expires_at timestamptz not null,
   created_at timestamptz not null default now()
 );
-create index sessions_user_idx on beyond_todo.sessions (user_id);
+create index if not exists sessions_user_idx on beyond_todo.sessions (user_id);
 
 -- One-time tokens sent by email (address verification / password reset).
-create table beyond_todo.auth_tokens (
+create table if not exists beyond_todo.auth_tokens (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   purpose text not null check (purpose in ('verify_email', 'reset_password')),
@@ -61,10 +65,10 @@ create table beyond_todo.auth_tokens (
   used_at timestamptz,
   created_at timestamptz not null default now()
 );
-create index auth_tokens_user_purpose_idx on beyond_todo.auth_tokens (user_id, purpose);
+create index if not exists auth_tokens_user_purpose_idx on beyond_todo.auth_tokens (user_id, purpose);
 
 -- Record of scheduled notifications already sent, so cron retries never double-send.
-create table beyond_todo.notification_deliveries (
+create table if not exists beyond_todo.notification_deliveries (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   kind text not null,
@@ -78,7 +82,7 @@ create table beyond_todo.notification_deliveries (
 -- --------------------------------------------------------
 
 -- Problems: 今の課題
-create table beyond_todo.challenges (
+create table if not exists beyond_todo.challenges (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   title text not null,
@@ -88,10 +92,10 @@ create table beyond_todo.challenges (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index challenges_user_idx on beyond_todo.challenges (user_id, created_at desc);
+create index if not exists challenges_user_idx on beyond_todo.challenges (user_id, created_at desc);
 
 -- Priorities: 最優先事項（週あたり未完了5件まで。上限はアプリ側で検証）
-create table beyond_todo.priorities (
+create table if not exists beyond_todo.priorities (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   challenge_id uuid references beyond_todo.challenges(id) on delete set null,
@@ -103,10 +107,10 @@ create table beyond_todo.priorities (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index priorities_user_week_idx on beyond_todo.priorities (user_id, target_week);
+create index if not exists priorities_user_week_idx on beyond_todo.priorities (user_id, target_week);
 
 -- Interests: 興味関心
-create table beyond_todo.interests (
+create table if not exists beyond_todo.interests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   title text not null,
@@ -117,10 +121,10 @@ create table beyond_todo.interests (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index interests_user_idx on beyond_todo.interests (user_id, created_at desc);
+create index if not exists interests_user_idx on beyond_todo.interests (user_id, created_at desc);
 
 -- Stakeholders
-create table beyond_todo.stakeholders (
+create table if not exists beyond_todo.stakeholders (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   name text not null,
@@ -129,10 +133,10 @@ create table beyond_todo.stakeholders (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index stakeholders_user_idx on beyond_todo.stakeholders (user_id, created_at desc);
+create index if not exists stakeholders_user_idx on beyond_todo.stakeholders (user_id, created_at desc);
 
 -- Stakeholder expectations: ステークホルダーの関心・期待
-create table beyond_todo.stakeholder_interests (
+create table if not exists beyond_todo.stakeholder_interests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   stakeholder_id uuid not null references beyond_todo.stakeholders(id) on delete cascade,
@@ -143,11 +147,11 @@ create table beyond_todo.stakeholder_interests (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index stakeholder_interests_user_idx on beyond_todo.stakeholder_interests (user_id);
-create index stakeholder_interests_stakeholder_idx on beyond_todo.stakeholder_interests (stakeholder_id);
+create index if not exists stakeholder_interests_user_idx on beyond_todo.stakeholder_interests (user_id);
+create index if not exists stakeholder_interests_stakeholder_idx on beyond_todo.stakeholder_interests (stakeholder_id);
 
 -- Weekly reviews: 8つの問いと振り返り
-create table beyond_todo.weekly_reviews (
+create table if not exists beyond_todo.weekly_reviews (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   week_start date not null,
@@ -162,10 +166,10 @@ create table beyond_todo.weekly_reviews (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index weekly_reviews_user_idx on beyond_todo.weekly_reviews (user_id, created_at desc);
+create index if not exists weekly_reviews_user_idx on beyond_todo.weekly_reviews (user_id, created_at desc);
 
 -- Decision logs: 意思決定ログ
-create table beyond_todo.decision_logs (
+create table if not exists beyond_todo.decision_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   priority_id uuid references beyond_todo.priorities(id) on delete set null,
@@ -174,10 +178,10 @@ create table beyond_todo.decision_logs (
   outcome text not null default '',
   created_at timestamptz not null default now()
 );
-create index decision_logs_user_idx on beyond_todo.decision_logs (user_id, created_at desc);
+create index if not exists decision_logs_user_idx on beyond_todo.decision_logs (user_id, created_at desc);
 
 -- Quick memos: 会議中のメモ・スクラッチパッド
-create table beyond_todo.quick_memos (
+create table if not exists beyond_todo.quick_memos (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references beyond_todo.users(id) on delete cascade,
   content text not null,
@@ -186,7 +190,7 @@ create table beyond_todo.quick_memos (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-create index quick_memos_user_idx on beyond_todo.quick_memos (user_id, created_at desc);
+create index if not exists quick_memos_user_idx on beyond_todo.quick_memos (user_id, created_at desc);
 
 -- --------------------------------------------------------
 -- updated_at triggers
@@ -201,7 +205,7 @@ begin
   ]
   loop
     execute format(
-      'create trigger set_updated_at before update on beyond_todo.%I
+      'create or replace trigger set_updated_at before update on beyond_todo.%I
          for each row execute function beyond_todo.set_updated_at()',
       t
     );
