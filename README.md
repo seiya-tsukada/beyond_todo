@@ -57,7 +57,7 @@ supabase/migrations/         DB スキーマ
 | フロントエンド | Vite 開発サーバー（`web` コンテナ、HMR） | `npm run build` の `dist/` を静的配信 |
 | API | uvicorn `--reload`（`api` コンテナ） | Vercel Python Function（`api/index.py`） |
 | DB | Docker の Postgres 17（`db` コンテナ、データはボリューム） | Supabase PostgreSQL（Transaction pooler） |
-| スキーマ | 起動時に `migrate` が `supabase/migrations` の未適用分を自動適用 | マージ後に `supabase db push` で適用 |
+| スキーマ | 起動時に `migrate` が `supabase/migrations` の未適用分を自動適用 | マージ後に `psql` で手動適用（下記「DB の初期化」） |
 | メール通知 | 送信しない（API ログに出力） | Resend で送信 |
 | Cookie | `COOKIE_SECURE`（compose では `false`） | 常に `Secure`（`COOKIE_SECURE` は無視） |
 | Cron | 手動で curl（下記） | Vercel Cron（`vercel.json`） |
@@ -83,12 +83,13 @@ cat supabase/migrations/*.sql | psql "<Session pooler の接続文字列>" -v ON
 
 - `-1` で全体を1トランザクションで実行するため、途中で失敗しても何も変更されません。
 - マイグレーションは冪等（既にあるテーブル・制約・インデックスはスキップ）なので、適用済みの DB に再実行しても何も変わりません。追加したマイグレーションだけを反映したいときも同じコマンドで構いません。
-- `supabase db push --db-url "<同じ URL>"` でも適用できます（こちらは適用履歴を `supabase_migrations.schema_migrations` に記録します）。
+- Supabase CLI の `supabase db push` は使いません（タイムスタンプ付きのファイル名しか対象にしないため、`init.sql` などは適用されません）。
+- ファイルは名前順に連結されて実行されます（`init.sql` → `integrity.sql`）。追加するファイルは、既存より後に並ぶ名前にしてください。
 - パスワードに記号が含まれる場合は URL エンコードしてください。以降のコマンドは `export DATABASE_URL="<同じ URL>"` しておくと `"$DATABASE_URL"` で書けます。
 
 ### メンテナンス用 SQL（`supabase/maintenance/`）
 
-`supabase/migrations/` の外に置いているため、`supabase db push` やローカルの `migrate` では実行されません。手動で `psql` から使います。
+`supabase/migrations/` の外に置いているため、上記の初期化コマンドやローカルの `migrate` では実行されません。手動で `psql` から使います。
 
 | ファイル | 内容 | 実行例 |
 | --- | --- | --- |
@@ -106,7 +107,6 @@ cat supabase/maintenance/drop_schema.sql supabase/migrations/*.sql | psql "$DATA
 ```
 
 - `truncate_users.sql`・`truncate_data.sql`・`drop_schema.sql` は `-v confirm=yes` がないとエラーで止まります（本番データの誤削除防止）。
-- 作り直しても適用されるマイグレーションは同じなので、`supabase db push` の適用履歴とは食い違いません。
 - ローカル（docker compose）の DB にも同じファイルが使えます（`DATABASE_URL=postgresql://postgres:postgres@localhost:54322/beyond_todo`）。
 
 ### 2. 環境変数（Vercel）
@@ -275,7 +275,7 @@ GitHub Flow を基本にします。検証は dev（docker compose）で行い�
 - 作業は `main` から短命ブランチを切る。命名: `feat/…`（機能）, `fix/…`（不具合）, `chore/…`（設定・依存・環境）, `docs/…`, `refactor/…`。
 - PR の動作確認はローカルの docker compose で行う（テスト・`npm run lint` も通す）。
 - マージは Squash merge、マージ後はブランチを削除。
-- DB 変更は `supabase/migrations/` に新しいファイルを追加する形で行い（既存ファイルは書き換えない）、本番への適用はマージ後に `supabase db push` または上記の `psql` ワンライナー（将来的には CI から）。マイグレーションは再実行しても安全なように冪等に書く（`if not exists`、`create or replace`、制約・列の追加は存在チェック付きの `do` ブロック）。
+- DB 変更は `supabase/migrations/` に新しいファイルを追加する形で行い（既存ファイルは書き換えない）、本番への適用はマージ後に上記の `psql` ワンライナー（将来的には CI から。`supabase db push` は使わない）。ファイルは名前順に実行されるため、新しいファイルは既存より後に並ぶ名前にする。マイグレーションは再実行しても安全なように冪等に書く（`if not exists`、`create or replace`、制約・列の追加は存在チェック付きの `do` ブロック）。
 
 ## デプロイ
 
