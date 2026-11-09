@@ -8,7 +8,7 @@ from ..db import Conn
 from ..errors import AppError
 from ..repositories import workspace as repo
 
-# Also enforced by the trigger in supabase/migrations/20261106000000_integrity.sql
+# Also enforced by the trigger in supabase/migrations/integrity.sql
 MAX_ACTIVE_PRIORITIES_PER_WEEK = 5
 
 
