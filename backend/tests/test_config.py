@@ -89,3 +89,11 @@ def test_local_does_not_send_email(env, monkeypatch):
     env.setenv("RESEND_API_KEY", "re_real_key")
     monkeypatch.setattr(resend.Emails, "send", lambda *_: pytest.fail("must not send locally"))
     assert send_email(EmailMessage(to="a@example.com", subject="s", html="<p>h</p>", text="t"))
+
+
+def test_mail_from_defaults_to_resend_shared_sender(env):
+    env.delenv("MAIL_FROM", raising=False)
+    assert get_settings().mail_from == "Beyond TODO. <onboarding@resend.dev>"
+    get_settings.cache_clear()
+    env.setenv("MAIL_FROM", "Beyond TODO. <info@beyond-todo.app>")
+    assert get_settings().mail_from == "Beyond TODO. <info@beyond-todo.app>"

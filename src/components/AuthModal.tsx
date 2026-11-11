@@ -122,8 +122,7 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
             {mode === 'reset' && '新しいパスワードの設定'}
           </h2>
           <p className="text-xs text-zinc-500">
-            {mode === 'login' && '自分の意思で、人生を動かすパーソナルマネジメント'}
-            {mode === 'register' && '課題・優先事項・興味関心を統合管理するワークスペース'}
+            {mode === 'login' && '自分の意思をコントロールする、パーソナルマネジメント'}
             {mode === 'verify' && (
               <>
                 <span className="font-semibold text-zinc-700 break-all">{email}</span> 宛に送信した

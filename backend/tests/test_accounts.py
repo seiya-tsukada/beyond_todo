@@ -254,3 +254,13 @@ def test_signup_needs_only_email_and_password(client, sent_emails):
     # A name can still be set later
     res = client.patch("/api/auth/me", json={"name": "山田 太郎"})
     assert res.json()["user"]["name"] == "山田 太郎"
+
+
+def test_signup_fails_visibly_when_mail_cannot_be_sent(client, monkeypatch, db):
+    from backend.notifications import emails
+
+    monkeypatch.setattr(emails, "send_email", lambda message: False)
+    res = client.post("/api/auth/register", json={"email": "a@example.com", "password": "password-123"})
+    assert res.status_code == 502 and "送信できませんでした" in res.json()["error"]
+    # Rolled back: no half-created account blocks an immediate retry
+    assert _sql(db, "select count(*) from beyond_todo.users")[0][0] == 0
