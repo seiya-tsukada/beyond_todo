@@ -42,6 +42,7 @@ RESET_PASSWORD_TTL = timedelta(hours=1)
 
 ALREADY_REGISTERED = "このメールアドレスは既に登録されています。"
 LOGIN_ERROR = "メールアドレスまたはパスワードが正しくありません。"
+MAIL_SEND_ERROR = "確認コードのメールを送信できませんでした。時間をおいて再度お試しください。"
 
 
 def _start_session(conn: DbConn, response: Response, uid: str) -> None:
@@ -69,7 +70,9 @@ def _send_signup_code(conn: DbConn, user: dict) -> bool:
     if last is not None and datetime.now(timezone.utc) - last < SIGNUP_CODE_RESEND_INTERVAL:
         return False
     code = users.issue_code(conn, uid, "verify_email", SIGNUP_CODE_TTL)
-    emails.send_signup_code_email(user["email"], emails.display_name(user), code)
+    if not emails.send_signup_code_email(user["email"], emails.display_name(user), code):
+        # Roll the request back (new account, issued code) so the user can retry at once
+        raise AppError(502, MAIL_SEND_ERROR)
     return True
 
 

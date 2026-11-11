@@ -133,7 +133,7 @@ Vercel の Project Settings → Environment Variables（Production）に `.env.e
 | `DATA_BACKEND` | | `postgres` または `mock`（DB を使わず固定データを返す）。未設定なら `DATABASE_URL` があれば `postgres`、なければ `mock` |
 | `MAIL_BACKEND` | | `resend` または `log`（送信せずログ出力）。未設定なら `RESEND_API_KEY` があれば `resend`、なければ `log` |
 | `DATABASE_URL` | ○※ | Supabase の Transaction pooler（ポート 6543）の接続文字列。※`DATA_BACKEND=mock` なら不要 |
-| `RESEND_API_KEY` / `MAIL_FROM` | ○※ | Resend の API キーと送信元。※`MAIL_BACKEND=log` なら不要 |
+| `RESEND_API_KEY` / `MAIL_FROM` | ○※ | Resend の API キーと送信元（例: `Beyond TODO. <info@beyond-todo.app>`。Resend で認証済みのドメインに限る）。※`MAIL_BACKEND=log` なら不要 |
 | `CRON_SECRET` | | 十分に長いランダム文字列（Vercel Cron の認証）。未設定の間は週次リマインドとキープアライブの Cron が動きません |
 | `APP_URL` | | 本番URL（`https://` 必須。メール内リンクに使用）。未設定なら Vercel のデプロイ URL（`VERCEL_PROJECT_PRODUCTION_URL`）を使用 |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | | 未設定ならルールベースのインサイト |
