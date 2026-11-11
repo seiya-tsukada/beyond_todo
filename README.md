@@ -96,11 +96,11 @@ cat supabase/migrations/*.sql | psql "<Session pooler の接続文字列>" -v ON
 
 ### リリースごとの一回限りの SQL（`supabase/tmp/`）
 
-既存 DB をそのリリースに合わせるための一回限りの SQL です（ファイル名は日付から）。本番に適用したら、そのファイルは削除してください。
+既存 DB をそのリリースに合わせるための一回限りの SQL を置く場所です（ファイル名は日付から。例: `2026-11-11_email_code_signup.sql`）。必要になったときにフォルダごと作り、本番に適用したらファイルを削除します（現在は適用待ちのものはありません）。
 
-| ファイル | 内容 | 実行例 |
-| --- | --- | --- |
-| `2026-11-11_email_code_signup.sql` | 確認コードによる新規登録への移行（`signup_code.sql` の適用、使われなくなった確認リンクの削除、ログアウトされる未確認ユーザーの一覧） | `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f supabase/tmp/2026-11-11_email_code_signup.sql` |
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f supabase/tmp/<ファイル名>.sql
+```
 
 ### メンテナンス用 SQL（`supabase/maintenance/`）
 
