@@ -10,6 +10,10 @@ export type AuthMode = 'login' | 'register' | 'verify' | 'forgot' | 'reset';
 /** Matches SIGNUP_CODE_RESEND_INTERVAL on the server */
 const RESEND_INTERVAL_S = 60;
 
+/** Matches NewPassword on the server: 8+ characters with a lowercase letter and a digit */
+const PASSWORD_RULE = '8文字以上で、英小文字と数字をそれぞれ1文字以上含めてください。';
+const isValidNewPassword = (value: string) => value.length >= 8 && /[a-z]/.test(value) && /[0-9]/.test(value);
+
 interface AuthModalProps {
   isOpen: boolean;
   initialMode?: AuthMode;
@@ -54,6 +58,10 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if ((mode === 'register' || mode === 'reset') && !isValidNewPassword(password)) {
+      showToast(`パスワードは${PASSWORD_RULE}`, 'error');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -131,7 +139,7 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
               </>
             )}
             {mode === 'forgot' && '登録したメールアドレス宛に再設定リンクを送信します'}
-            {mode === 'reset' && '8文字以上の新しいパスワードを入力してください'}
+            {mode === 'reset' && '新しいパスワードを入力してください（8文字以上・英小文字と数字を含む）'}
           </p>
         </div>
 
@@ -202,7 +210,7 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
                   required
                   minLength={mode === 'login' ? 1 : 8}
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                  placeholder={mode === 'login' ? '••••••••' : '8文字以上'}
+                  placeholder={mode === 'login' ? '••••••••' : '8文字以上・英小文字と数字を含む'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className={inputClass}
