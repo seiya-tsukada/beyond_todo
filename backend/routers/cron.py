@@ -52,7 +52,7 @@ def weekly_review_reminder(request: Request):
             priorities = repo.list_priorities(conn, uid, week)
             ok = emails.send_weekly_review_reminder(
                 user["email"],
-                user["name"],
+                emails.display_name(user),
                 week=week,
                 completed=[p["title"] for p in priorities if p["status"] == "Completed"],
                 incomplete=[p["title"] for p in priorities if p["status"] != "Completed"],

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { User, Mail, Download, CheckCircle2, AlertCircle, Bell } from 'lucide-react';
+import { User, Download, CheckCircle2, Bell } from 'lucide-react';
 import { User as UserType } from '../types/index.ts';
 import { api } from '../services/api.ts';
 import { useToast } from './Toast.tsx';
-import { UserAvatar } from './UserAvatar.tsx';
+import { UserAvatar, displayName } from './UserAvatar.tsx';
 
 interface SettingsViewProps {
   user: UserType | null;
@@ -13,20 +13,7 @@ interface SettingsViewProps {
 
 export function SettingsView({ user, onUserUpdated, onLogout }: SettingsViewProps) {
   const { showToast } = useToast();
-  const [isResending, setIsResending] = useState(false);
   const [isSavingNotify, setIsSavingNotify] = useState(false);
-
-  const handleResendVerification = async () => {
-    setIsResending(true);
-    try {
-      const res = await api.resendVerificationEmail();
-      showToast(res.message);
-    } catch (err: any) {
-      showToast(err.message || '確認メールの送信に失敗しました', 'error');
-    } finally {
-      setIsResending(false);
-    }
-  };
 
   const handleToggleWeeklyReminder = async () => {
     if (!user) return;
@@ -66,43 +53,21 @@ export function SettingsView({ user, onUserUpdated, onLogout }: SettingsViewProp
             <User className="w-4 h-4 text-zinc-700" />
             <span>ユーザーアカウント情報</span>
           </h2>
-          {user?.email_verified_at ? (
-            <span className="text-xs text-emerald-700 font-medium flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>メールアドレス確認済み</span>
-            </span>
-          ) : (
-            <span className="text-xs text-amber-700 font-medium flex items-center gap-1">
-              <AlertCircle className="w-3.5 h-3.5" />
-              <span>メールアドレス未確認</span>
-            </span>
-          )}
+          {/* Only verified accounts can sign in, so this is always shown */}
+          <span className="text-xs text-emerald-700 font-medium flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span>メールアドレス確認済み</span>
+          </span>
         </div>
 
         <div className="flex items-center gap-4">
           <UserAvatar user={user} className="w-14 h-14 text-xl" />
           <div className="space-y-0.5">
-            <h3 className="text-base font-bold text-zinc-900">{user?.name}</h3>
+            <h3 className="text-base font-bold text-zinc-900">{displayName(user)}</h3>
             <p className="text-xs text-zinc-500 font-mono">{user?.email}</p>
             {user?.title && <p className="text-xs text-zinc-600">{user.title}</p>}
           </div>
         </div>
-
-        {user && !user.email_verified_at && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100 text-xs">
-            <p className="text-amber-800">
-              登録時にお送りした確認メールのリンクを開いてください。確認が済むまでリマインドメールは届きません。
-            </p>
-            <button
-              onClick={handleResendVerification}
-              disabled={isResending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 font-semibold text-amber-900 bg-white border border-amber-200 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-50"
-            >
-              <Mail className="w-3.5 h-3.5" />
-              <span>{isResending ? '送信中...' : '確認メールを再送'}</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {/* 2. Email Notifications */}

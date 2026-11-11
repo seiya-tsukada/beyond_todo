@@ -1,7 +1,7 @@
 import React from 'react';
 import { Compass, Menu, X, User as UserIcon, FileText } from 'lucide-react';
 import { User } from '../types/index.ts';
-import { UserAvatar } from './UserAvatar.tsx';
+import { UserAvatar, displayName } from './UserAvatar.tsx';
 
 export type NavTab = 'focus' | 'dashboard' | 'myspace' | 'review' | 'settings';
 
@@ -90,7 +90,7 @@ export function Navbar({ currentTab, onSelectTab, user, onOpenReviewModal, onOpe
             >
               <UserAvatar user={user} />
               <span className="hidden xl:inline text-xs font-medium text-zinc-700 max-w-[100px] truncate">
-                {user?.name}
+                {displayName(user)}
               </span>
             </button>
 

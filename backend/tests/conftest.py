@@ -7,6 +7,7 @@ Requires a disposable PostgreSQL database given by TEST_DATABASE_URL; the
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import psycopg
@@ -16,6 +17,9 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS = sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
+
+# Mails captured by the `sent_emails` fixture (shared so `register` can read codes)
+_OUTBOX: list = []
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -50,7 +54,8 @@ def db():
 @pytest.fixture
 def sent_emails(monkeypatch):
     """Capture outgoing e-mails instead of sending them."""
-    outbox: list = []
+    outbox = _OUTBOX
+    outbox.clear()
     from backend.notifications import emails
 
     monkeypatch.setattr(emails, "send_email", lambda message: outbox.append(message) or True)
@@ -65,9 +70,28 @@ def client(db, sent_emails):
         yield c
 
 
-def register(client: TestClient, email: str = "a@example.com", password: str = "password123", name: str = "A"):
-    res = client.post("/api/auth/register", json={"email": email, "password": password, "name": name})
+def signup_code(message) -> str:
+    """The 6-digit code from a sign-up e-mail."""
+    match = re.search(r"^\s+(\d{6})$", message.text, re.MULTILINE)
+    assert match, message.text
+    return match.group(1)
+
+
+def register(
+    client: TestClient,
+    email: str = "a@example.com",
+    password: str = "password123",
+    *,
+    verify: bool = True,
+):
+    """Sign up; with verify=True also enter the mailed code, leaving the client signed in."""
+    res = client.post("/api/auth/register", json={"email": email, "password": password})
     assert res.status_code == 201, res.text
+    if not verify:
+        return res.json()
+    mail = next(m for m in reversed(_OUTBOX) if m.to.lower() == email.lower())
+    res = client.post("/api/auth/register/verify", json={"email": email, "code": signup_code(mail)})
+    assert res.status_code == 200, res.text
     return res.json()["user"]
 
 

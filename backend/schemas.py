@@ -41,8 +41,6 @@ def _password() -> Any:
 class RegisterIn(BaseModel):
     email: EmailStr
     password: str = _password()
-    name: str = Field(min_length=1, max_length=100)
-    title: Optional[str] = Field(default=None, max_length=100)
 
 
 class LoginIn(BaseModel):
@@ -56,8 +54,13 @@ class ProfileUpdateIn(BaseModel):
     notify_weekly_review: Optional[bool] = None
 
 
-class TokenIn(BaseModel):
-    token: str = Field(min_length=1, max_length=200)
+class EmailIn(BaseModel):
+    email: EmailStr
+
+
+class VerifyCodeIn(BaseModel):
+    email: EmailStr
+    code: str = Field(pattern=r"^\d{6}$")
 
 
 class ForgotPasswordIn(BaseModel):
@@ -226,7 +229,7 @@ class MessageOut(SuccessOut):
 class UserOut(_Out):
     id: UUID
     email: str
-    name: str
+    name: Optional[str] = None  # not asked at sign-up; see emails.display_name
     title: Optional[str] = None
     email_verified_at: Optional[datetime] = None
     notify_weekly_review: bool
@@ -237,12 +240,8 @@ class UserEnvelope(_Out):
     user: UserOut
 
 
-class RegisterOut(UserEnvelope):
-    message: str
-
-
-class VerifyEmailOut(_Out):
-    user: Optional[UserOut] = None
+class RegisterOut(_Out):
+    email: str
     message: str
 
 

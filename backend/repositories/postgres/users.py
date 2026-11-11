@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -11,6 +12,7 @@ from ...db import Conn, execute, fetch_all, fetch_one, insert
 from ...security import hash_token, new_token
 
 TokenPurpose = Literal["verify_email", "reset_password"]
+CodeCheck = Literal["ok", "invalid", "expired"]
 
 PUBLIC_USER_COLUMNS = ("id", "email", "name", "title", "email_verified_at", "notify_weekly_review", "created_at")
 
@@ -28,7 +30,7 @@ def get_by_id(conn: Conn, user_id: str) -> dict[str, Any] | None:
     return fetch_one(conn, "select * from beyond_todo.users where id = %s", (user_id,))
 
 
-def create(conn: Conn, *, email: str, password_hash: str, name: str, title: str | None) -> dict[str, Any]:
+def create(conn: Conn, *, email: str, password_hash: str, name: str | None = None, title: str | None = None) -> dict[str, Any]:
     return insert(conn, "users", {"email": email, "password_hash": password_hash, "name": name, "title": title})
 
 
@@ -110,6 +112,72 @@ def consume_token(conn: Conn, token: str, purpose: TokenPurpose) -> str | None:
         (hash_token(token), purpose),
     )
     return str(row["user_id"]) if row else None
+
+
+# --- One-time numeric codes (e-mail verification at sign-up) ---
+def _code_hash(user_id: str, code: str) -> str:
+    # Salted with the user id: short codes repeat across users, token_hash is unique
+    return hash_token(f"{user_id}:{code}")
+
+
+def issue_code(conn: Conn, user_id: str, purpose: TokenPurpose, ttl: timedelta) -> str:
+    """Issue a 6-digit code; earlier unused codes of the same purpose stop working."""
+    execute(
+        conn,
+        "delete from beyond_todo.auth_tokens where user_id = %s and purpose = %s and used_at is null",
+        (user_id, purpose),
+    )
+    code = f"{secrets.randbelow(10**6):06d}"
+    insert(
+        conn,
+        "auth_tokens",
+        {
+            "user_id": user_id,
+            "purpose": purpose,
+            "token_hash": _code_hash(user_id, code),
+            "expires_at": datetime.now(timezone.utc) + ttl,
+        },
+    )
+    return code
+
+
+def last_issued_at(conn: Conn, user_id: str, purpose: TokenPurpose) -> datetime | None:
+    row = fetch_one(
+        conn,
+        "select max(created_at) as at from beyond_todo.auth_tokens where user_id = %s and purpose = %s",
+        (user_id, purpose),
+    )
+    return row["at"] if row else None
+
+
+def check_code(conn: Conn, user_id: str, purpose: TokenPurpose, code: str, max_attempts: int) -> CodeCheck:
+    """Consume the code if it matches; count a wrong guess otherwise.
+
+    "expired" means there is no usable code: none issued, past its expiry, already
+    used, or locked after `max_attempts` wrong guesses.
+    """
+    row = fetch_one(
+        conn,
+        """
+        select id, token_hash, attempts from beyond_todo.auth_tokens
+        where user_id = %s and purpose = %s and used_at is null and expires_at > now()
+        order by created_at desc limit 1
+        for update
+        """,
+        (user_id, purpose),
+    )
+    if row is None:
+        return "expired"
+    if secrets.compare_digest(row["token_hash"], _code_hash(user_id, code)):
+        execute(conn, "update beyond_todo.auth_tokens set used_at = now() where id = %s", (row["id"],))
+        return "ok"
+    attempts = row["attempts"] + 1
+    execute(
+        conn,
+        "update beyond_todo.auth_tokens set attempts = %s, used_at = case when %s then now() end where id = %s",
+        (attempts, attempts >= max_attempts, row["id"]),
+    )
+    return "expired" if attempts >= max_attempts else "invalid"
 
 
 def purge_expired(conn: Conn) -> dict[str, int]:

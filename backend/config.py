@@ -20,8 +20,6 @@ data backend falls back to ``mock``, and without RESEND_API_KEY mail falls back 
 ``log``, so a fresh Vercel deployment starts with no variables set. Setting
 DATA_BACKEND / MAIL_BACKEND explicitly still requires the matching variables.
 
-``DEMO_LOGIN`` (default ``true``) shows a "skip login" button that signs in as a
-shared demo user (demo@example.com). Turn it off once real users sign up.
 """
 
 from __future__ import annotations
@@ -88,7 +86,6 @@ class Settings:
     gemini_api_key: str | None
     gemini_model: str
     cron_secret: str | None
-    demo_login: bool
 
     @property
     def is_production(self) -> bool:
@@ -141,7 +138,6 @@ def get_settings() -> Settings:
         gemini_api_key=os.environ.get("GEMINI_API_KEY") or None,
         gemini_model=os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
         cron_secret=os.environ.get("CRON_SECRET") or None,
-        demo_login=_bool(os.environ.get("DEMO_LOGIN"), True),
     )
     if production:
         _validate_production(settings)

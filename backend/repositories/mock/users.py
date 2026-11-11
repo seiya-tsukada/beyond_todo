@@ -46,7 +46,7 @@ def get_by_id(conn: Any, user_id: str) -> dict[str, Any] | None:
     return _demo() if str(user_id) == DEMO_USER_ID else None
 
 
-def create(conn: Any, *, email: str, password_hash: str, name: str, title: str | None) -> dict[str, Any]:
+def create(conn: Any, *, email: str, password_hash: str, name: str | None = None, title: str | None = None) -> dict[str, Any]:
     return new_row(
         "users",
         {"email": email, "password_hash": password_hash, "name": name, "title": title},
@@ -83,6 +83,18 @@ def issue_token(conn: Any, user_id: str, purpose: str, ttl: timedelta) -> str:
 
 def consume_token(conn: Any, token: str, purpose: str) -> str | None:
     return DEMO_USER_ID
+
+
+def issue_code(conn: Any, user_id: str, purpose: str, ttl: timedelta) -> str:
+    return "000000"
+
+
+def last_issued_at(conn: Any, user_id: str, purpose: str) -> datetime | None:
+    return None
+
+
+def check_code(conn: Any, user_id: str, purpose: str, code: str, max_attempts: int) -> str:
+    return "ok"
 
 
 def purge_expired(conn: Any) -> dict[str, int]:

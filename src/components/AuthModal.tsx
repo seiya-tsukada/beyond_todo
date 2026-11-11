@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Compass, Mail, Lock, User as UserIcon } from 'lucide-react';
-import { api } from '../services/api.ts';
+import { Compass, Mail, Lock, KeyRound } from 'lucide-react';
+import { api, ApiError } from '../services/api.ts';
 import { User } from '../types/index.ts';
 import { useToast } from './Toast.tsx';
 
-export type AuthMode = 'login' | 'register' | 'forgot' | 'reset';
+/** 'verify' is the second step of sign-up: entering the code mailed to the address. */
+export type AuthMode = 'login' | 'register' | 'verify' | 'forgot' | 'reset';
+
+/** Matches SIGNUP_CODE_RESEND_INTERVAL on the server */
+const RESEND_INTERVAL_S = 60;
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -15,28 +19,38 @@ interface AuthModalProps {
   onResetComplete?: () => void;
 }
 
+const inputClass =
+  'w-full pl-9 pr-3 py-2 text-sm border border-zinc-300 rounded-lg focus:ring-1 focus:ring-zinc-900 focus:outline-none';
+
 export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess, onResetComplete }: AuthModalProps) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [title, setTitle] = useState('');
+  const [code, setCode] = useState('');
+  const [resendIn, setResendIn] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [demoLoginEnabled, setIsMockBackend] = useState(false);
   const { showToast } = useToast();
 
   useEffect(() => {
     setMode(initialMode);
   }, [initialMode]);
 
+  // Countdown until the code may be resent
   useEffect(() => {
-    api
-      .getHealth()
-      .then((h) => setIsMockBackend(h.demo_login === true))
-      .catch(() => setIsMockBackend(false));
-  }, []);
+    if (resendIn <= 0) return;
+    const timer = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
 
   if (!isOpen) return null;
+
+  const goToVerify = (message: string) => {
+    showToast(message);
+    setCode('');
+    setPassword('');
+    setResendIn(RESEND_INTERVAL_S);
+    setMode('verify');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,12 +58,21 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
 
     try {
       if (mode === 'login') {
-        const res = await api.login(email, password);
-        showToast('ログインしました');
-        onSuccess(res.user);
+        try {
+          const res = await api.login(email, password);
+          showToast('ログインしました');
+          onSuccess(res.user);
+        } catch (err) {
+          // Right password but the address is not verified yet: a code was mailed
+          if (err instanceof ApiError && err.status === 403) goToVerify(err.message);
+          else throw err;
+        }
       } else if (mode === 'register') {
-        const res = await api.register({ name, email, password, title: title || undefined });
-        showToast(res.message || 'アカウントを登録しました');
+        const res = await api.register({ email, password });
+        goToVerify(res.message);
+      } else if (mode === 'verify') {
+        const res = await api.verifySignupCode(email, code);
+        showToast('メールアドレスを確認しました。ようこそ！');
         onSuccess(res.user);
       } else if (mode === 'forgot') {
         const res = await api.forgotPassword(email);
@@ -70,14 +93,15 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
     }
   };
 
-  const handleSkip = async () => {
+  const handleResend = async () => {
     setLoading(true);
     try {
-      const res = await api.demoLogin();
-      showToast('デモユーザーでログインしました');
-      onSuccess(res.user);
+      const res = await api.resendSignupCode(email);
+      showToast(res.message);
+      setCode('');
+      setResendIn(RESEND_INTERVAL_S);
     } catch (err: any) {
-      showToast(err.message || 'スキップに失敗しました', 'error');
+      showToast(err.message || '確認コードの再送に失敗しました', 'error');
     } finally {
       setLoading(false);
     }
@@ -93,53 +117,51 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
           <h2 className="text-lg font-bold text-zinc-900">
             {mode === 'login' && 'Beyond TODO. へログイン'}
             {mode === 'register' && 'アカウントを新規作成'}
+            {mode === 'verify' && 'メールアドレスの確認'}
             {mode === 'forgot' && 'パスワードの再設定'}
             {mode === 'reset' && '新しいパスワードの設定'}
           </h2>
           <p className="text-xs text-zinc-500">
             {mode === 'login' && '自分の意思で、人生を動かすパーソナルマネジメント'}
             {mode === 'register' && '課題・優先事項・興味関心を統合管理するワークスペース'}
+            {mode === 'verify' && (
+              <>
+                <span className="font-semibold text-zinc-700 break-all">{email}</span> 宛に送信した
+                <br />
+                6桁の確認コードを入力してください（10分間有効）
+              </>
+            )}
             {mode === 'forgot' && '登録したメールアドレス宛に再設定リンクを送信します'}
             {mode === 'reset' && '8文字以上の新しいパスワードを入力してください'}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {mode === 'register' && (
-            <>
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  お名前 <span className="text-rose-500">*</span>
-                </label>
-                <div className="relative">
-                  <UserIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="例: 田中 誠也"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-zinc-300 rounded-lg focus:ring-1 focus:ring-zinc-900 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-700 mb-1">
-                  肩書き・役割
-                </label>
+          {mode === 'verify' && (
+            <div>
+              <label className="block text-xs font-semibold text-zinc-700 mb-1">
+                確認コード <span className="text-rose-500">*</span>
+              </label>
+              <div className="relative">
+                <KeyRound className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
                 <input
                   type="text"
-                  placeholder="例: 起業家 / Product Lead"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-zinc-300 rounded-lg focus:ring-1 focus:ring-zinc-900 focus:outline-none"
+                  required
+                  autoFocus
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="\d{6}"
+                  maxLength={6}
+                  placeholder="123456"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className={`${inputClass} font-mono text-lg tracking-[0.5em]`}
                 />
               </div>
-            </>
+            </div>
           )}
 
-          {mode !== 'reset' && (
+          {mode !== 'reset' && mode !== 'verify' && (
             <div>
               <label className="block text-xs font-semibold text-zinc-700 mb-1">
                 メールアドレス <span className="text-rose-500">*</span>
@@ -152,13 +174,13 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-zinc-300 rounded-lg focus:ring-1 focus:ring-zinc-900 focus:outline-none"
+                  className={inputClass}
                 />
               </div>
             </div>
           )}
 
-          {mode !== 'forgot' && (
+          {mode !== 'forgot' && mode !== 'verify' && (
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-semibold text-zinc-700">
@@ -184,7 +206,7 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
                   placeholder={mode === 'login' ? '••••••••' : '8文字以上'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-zinc-300 rounded-lg focus:ring-1 focus:ring-zinc-900 focus:outline-none"
+                  className={inputClass}
                 />
               </div>
             </div>
@@ -192,24 +214,39 @@ export function AuthModal({ isOpen, initialMode = 'login', resetToken, onSuccess
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (mode === 'verify' && code.length !== 6)}
             className="w-full py-2.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-50 mt-2"
           >
             {loading
               ? '処理中...'
-              : { login: 'ログインする', register: 'アカウントを作成', forgot: '再設定メールを送信', reset: 'パスワードを変更する' }[mode]}
+              : {
+                  login: 'ログインする',
+                  register: '確認コードを送信',
+                  verify: '確認してはじめる',
+                  forgot: '再設定メールを送信',
+                  reset: 'パスワードを変更する',
+                }[mode]}
           </button>
         </form>
 
-        {demoLoginEnabled && mode === 'login' && (
-          <button
-            type="button"
-            onClick={handleSkip}
-            disabled={loading}
-            className="w-full mt-2 py-2.5 text-xs font-semibold text-zinc-700 bg-white border border-dashed border-zinc-300 hover:bg-zinc-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-          >
-            ログインをスキップ（デモユーザーで試す）
-          </button>
+        {mode === 'verify' && (
+          <div className="mt-3 flex items-center justify-between text-[11px] text-zinc-500">
+            <button
+              type="button"
+              onClick={() => setMode('register')}
+              className="hover:text-zinc-900 cursor-pointer"
+            >
+              メールアドレスを変更する
+            </button>
+            <button
+              type="button"
+              onClick={handleResend}
+              disabled={loading || resendIn > 0}
+              className="font-semibold text-zinc-700 hover:text-zinc-900 cursor-pointer disabled:cursor-default disabled:text-zinc-400"
+            >
+              {resendIn > 0 ? `コードを再送（${resendIn}秒後）` : 'コードを再送する'}
+            </button>
+          </div>
         )}
 
         <div className="mt-4 pt-4 border-t border-zinc-100 text-center">

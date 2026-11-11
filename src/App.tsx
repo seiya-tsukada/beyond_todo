@@ -39,7 +39,6 @@ type AuthStatus = 'checking' | 'authenticated' | 'anonymous';
 function takeEmailLinkParams() {
   const params = new URLSearchParams(window.location.search);
   const result = {
-    verifyToken: params.get('verify_token'),
     resetToken: params.get('reset_token'),
     forgot: params.get('forgot') === '1',
     tab: params.get('tab'),
@@ -137,19 +136,10 @@ function AppContent() {
       showToast('セッションの有効期限が切れました。再度ログインしてください。', 'info');
     });
 
-    const { verifyToken, resetToken: linkResetToken, forgot, tab } = takeEmailLinkParams();
+    const { resetToken: linkResetToken, forgot, tab } = takeEmailLinkParams();
     if (tab === 'review') setCurrentTab('review');
 
     (async () => {
-      if (verifyToken) {
-        try {
-          const res = await api.verifyEmail(verifyToken);
-          showToast(res.message);
-        } catch (err: any) {
-          showToast(err.message || 'メールアドレスの確認に失敗しました', 'error');
-        }
-      }
-
       if (linkResetToken) {
         setResetToken(linkResetToken);
         setAuthMode('reset');
