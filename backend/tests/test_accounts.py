@@ -129,7 +129,7 @@ def test_pending_signup_cannot_be_taken_over(client, new_client, sent_emails):
 
     # Someone else re-registers the pending address with their own password
     attacker = new_client()
-    res = attacker.post("/api/auth/register", json={"email": "a@example.com", "password": "attacker-pw"})
+    res = attacker.post("/api/auth/register", json={"email": "a@example.com", "password": "attacker-pw1"})
     assert res.status_code == 400
 
     # The owner retrying with their own password is fine
@@ -137,7 +137,7 @@ def test_pending_signup_cannot_be_taken_over(client, new_client, sent_emails):
     assert res.status_code == 201
     verified = client.post("/api/auth/register/verify", json={"email": "a@example.com", "code": owner_code})
     assert verified.status_code == 200
-    assert attacker.post("/api/auth/login", json={"email": "a@example.com", "password": "attacker-pw"}).status_code == 401
+    assert attacker.post("/api/auth/login", json={"email": "a@example.com", "password": "attacker-pw1"}).status_code == 401
 
 
 def test_sessions_of_unverified_accounts_are_rejected(client, db):
@@ -172,7 +172,7 @@ def test_password_reset_flow(client, new_client, sent_emails, db):
 
     # A sign-up code cannot be used as a reset token
     code = signup_code(sent_emails[0])
-    assert other.post("/api/auth/reset-password", json={"token": code, "password": "x" * 8}).status_code == 400
+    assert other.post("/api/auth/reset-password", json={"token": code, "password": "xxxxxxx1"}).status_code == 400
 
     # Too short a new password is rejected without consuming the token
     assert other.post("/api/auth/reset-password", json={"token": token, "password": "short"}).status_code == 400

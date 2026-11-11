@@ -1,5 +1,7 @@
 import re
 
+import pytest
+
 from .conftest import register, signup_code
 
 
@@ -42,6 +44,18 @@ def test_short_password_rejected(client):
     res = client.post("/api/auth/register", json={"email": "a@example.com", "password": "short"})
     assert res.status_code == 400
     assert "error" in res.json()
+
+
+@pytest.mark.parametrize("password", ["password", "12345678", "PASSWORD1"])
+def test_password_needs_lowercase_letter_and_digit(client, password):
+    res = client.post("/api/auth/register", json={"email": "a@example.com", "password": password})
+    assert res.status_code == 400
+    assert "英小文字と数字" in res.json()["error"]
+
+
+def test_password_with_lowercase_letter_and_digit_is_accepted(client):
+    res = client.post("/api/auth/register", json={"email": "a@example.com", "password": "Pass-word1"})
+    assert res.status_code == 201
 
 
 def test_register_does_not_sign_in_until_code_is_entered(client, sent_emails):

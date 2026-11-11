@@ -8,11 +8,12 @@ response model, so secrets such as ``password_hash`` can never leak.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
-from typing import Any, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
 
 ChallengeStatus = Literal["Open", "In Progress", "Resolved"]
 Importance = Literal["High", "Medium", "Low"]
@@ -33,14 +34,21 @@ def _week() -> Any:
     return Field(default=None, pattern=WEEK_PATTERN)
 
 
-def _password() -> Any:
-    return Field(min_length=8, max_length=128)
+def _check_password(value: str) -> str:
+    """At least one lowercase letter and one digit (length is checked by the Field)."""
+    if not re.search(r"[a-z]", value) or not re.search(r"[0-9]", value):
+        raise ValueError("password must contain a lowercase letter and a digit")
+    return value
+
+
+# New passwords. Sign-in (LoginIn) only checks presence, so older passwords keep working.
+NewPassword = Annotated[str, Field(min_length=8, max_length=128), AfterValidator(_check_password)]
 
 
 # --- Auth ---
 class RegisterIn(BaseModel):
     email: EmailStr
-    password: str = _password()
+    password: NewPassword
 
 
 class LoginIn(BaseModel):
@@ -69,7 +77,7 @@ class ForgotPasswordIn(BaseModel):
 
 class ResetPasswordIn(BaseModel):
     token: str = Field(min_length=1, max_length=200)
-    password: str = _password()
+    password: NewPassword
 
 
 # --- Challenges ---
