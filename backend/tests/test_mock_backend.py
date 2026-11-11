@@ -24,10 +24,7 @@ assert c.post("/api/auth/login", json={"email": DEMO_EMAIL, "password": "wrong-p
 r = c.post("/api/auth/login", json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD})
 assert r.status_code == 200, r.text
 assert c.get("/api/auth/me").json()["user"]["email"] == DEMO_EMAIL
-c.post("/api/auth/logout")
-r = c.post("/api/auth/demo-login")
-assert r.status_code == 200, r.text
-assert c.get("/api/auth/me").json()["user"]["email"] == DEMO_EMAIL
+assert c.post("/api/auth/demo-login").status_code == 404  # removed
 
 overview = c.get("/api/dashboard/overview").json()
 assert overview["challenges"] and overview["priorities"] and overview["stakeholders"]

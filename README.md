@@ -10,7 +10,7 @@
 | フロントエンド | React + TypeScript + Vite + Tailwind CSS | `src/` |
 | バックエンド | Python / FastAPI | `backend/`（エントリ: `api/index.py`） |
 | DB | Supabase PostgreSQL（`beyond_todo` スキーマ） | `supabase/migrations/` |
-| 認証 | 独自実装（Argon2id + httpOnly セッション Cookie。Supabase Auth 不使用） | `backend/routers/auth.py` |
+| 認証 | 独自実装（Argon2id + httpOnly セッション Cookie + メールの確認コード。Supabase Auth 不使用） | `backend/routers/auth.py` |
 | 通知 | Resend によるメール（`MAIL_BACKEND=resend`。ローカルの既定はログ出力） | `backend/notifications/` |
 | AI | Gemini（未設定時はルールベース） | `backend/services/insights.py` |
 
@@ -38,8 +38,15 @@ supabase/migrations/         DB スキーマ
 - 課題・最優先事項・ステークホルダーへの紐付けは複合外部キー `(id, user_id)` により同一ユーザー内に限定されます。
 - レスポンスの形は `backend/schemas.py` の `*Out` モデル（`src/types/index.ts` と対応）、リポジトリの共通インターフェースは `backend/repositories/base.py` です。
 - 週は **ISO 週（Asia/Tokyo）** で計算します（例: `2026-W45`）。
+- 新規登録はメールの確認コードで完了します。
+  1. メールアドレス・パスワードだけを入力 → アカウントを「未確認」で作成し、6桁の確認コードをメール送信（この時点ではログインしない）
+  2. 届いたコードを入力 → メールアドレスを確認済みにしてログイン
+  - コードは10分間有効、5回間違えると無効（再送が必要）。再送は60秒に1回まで。DB にはコードのハッシュだけを保存します。
+  - 名前は登録時に聞きません（`users.name` は null 可）。表示やメールの宛名には、名前がなければメールアドレスの `@` より前を使います。
+  - 未確認のアカウントはログインできません。正しいパスワードでログインしようとすると新しいコードを送り、コード入力画面に進みます。
+  - 未確認のメールアドレスで再度登録できるのは、同じパスワードを入力した場合だけです（他人が先にパスワードを上書きしてアカウントを乗っ取るのを防ぐため）。心当たりのない未確認登録がある場合は、パスワード再設定で取り戻せます（再設定メールの受信で確認済みになります）。
 - メール通知
-  - 新規登録時のメールアドレス確認（24時間有効）
+  - 新規登録時の確認コード（10分間有効）
   - パスワード再設定（1時間有効）／再設定完了のセキュリティ通知
   - 週次レビューのリマインド: 日曜 18:00 JST（Vercel Cron `0 9 * * 0` UTC）。メール確認済み・設定でON・その週の振り返り未作成のユーザーにのみ送信し、同じ週に二重送信しません。同じジョブで期限切れのセッションと使用済み・期限切れのトークンを削除します。
 - DB キープアライブ: 毎日 03:00 JST（Vercel Cron `0 18 * * *` UTC）に `/api/cron/keepalive` が読み取り専用の軽いクエリを1回実行し、Supabase 無料プランの非アクティブによる一時停止を防ぎます。READ ONLY トランザクション・5秒タイムアウトで、データの変更やメール送信は行いません（`DATA_BACKEND=mock` では何もしません）。
@@ -87,6 +94,14 @@ cat supabase/migrations/*.sql | psql "<Session pooler の接続文字列>" -v ON
 - ファイルは名前順に連結されて実行されます（`init.sql` → `integrity.sql`）。追加するファイルは、既存より後に並ぶ名前にしてください。
 - パスワードに記号が含まれる場合は URL エンコードしてください。以降のコマンドは `export DATABASE_URL="<同じ URL>"` しておくと `"$DATABASE_URL"` で書けます。
 
+### リリースごとの一回限りの SQL（`supabase/tmp/`）
+
+既存 DB をそのリリースに合わせるための一回限りの SQL です（ファイル名は日付から）。本番に適用したら、そのファイルは削除してください。
+
+| ファイル | 内容 | 実行例 |
+| --- | --- | --- |
+| `2026-11-11_email_code_signup.sql` | 確認コードによる新規登録への移行（`signup_code.sql` の適用、使われなくなった確認リンクの削除、ログアウトされる未確認ユーザーの一覧） | `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f supabase/tmp/2026-11-11_email_code_signup.sql` |
+
 ### メンテナンス用 SQL（`supabase/maintenance/`）
 
 `supabase/migrations/` の外に置いているため、上記の初期化コマンドやローカルの `migrate` では実行されません。手動で `psql` から使います。
@@ -117,7 +132,6 @@ Vercel の Project Settings → Environment Variables（Production）に `.env.e
 | --- | --- | --- |
 | `DATA_BACKEND` | | `postgres` または `mock`（DB を使わず固定データを返す）。未設定なら `DATABASE_URL` があれば `postgres`、なければ `mock` |
 | `MAIL_BACKEND` | | `resend` または `log`（送信せずログ出力）。未設定なら `RESEND_API_KEY` があれば `resend`、なければ `log` |
-| `DEMO_LOGIN` | | `true`（既定）ならログイン画面に「ログインをスキップ」を表示し、共用のデモユーザー（demo@example.com）で入れる。本運用前に `false` にする |
 | `DATABASE_URL` | ○※ | Supabase の Transaction pooler（ポート 6543）の接続文字列。※`DATA_BACKEND=mock` なら不要 |
 | `RESEND_API_KEY` / `MAIL_FROM` | ○※ | Resend の API キーと送信元。※`MAIL_BACKEND=log` なら不要 |
 | `CRON_SECRET` | | 十分に長いランダム文字列（Vercel Cron の認証）。未設定の間は週次リマインドとキープアライブの Cron が動きません |
@@ -129,10 +143,10 @@ Vercel の Project Settings → Environment Variables（Production）に `.env.e
 
 ### Supabase / Resend なしで先行デプロイする（モック）
 
-Supabase と Resend の接続前は、環境変数を何も設定しなくてもデプロイして画面を確認できます（`DATABASE_URL` / `RESEND_API_KEY` がなければ自動で `mock` / `log` になります）。ログイン画面の「ログインをスキップ」からデモユーザーで入れます。
+Supabase と Resend の接続前は、環境変数を何も設定しなくてもデプロイして画面を確認できます（`DATABASE_URL` / `RESEND_API_KEY` がなければ自動で `mock` / `log` になります）。
 
 - `demo@example.com` / `demo-password` でログインできます（どのセッションもこのデモユーザーとして扱われます）。
-- データは `backend/repositories/mock/_data.py` の固定データです。作成・更新・削除は成功レスポンスを返しますが保存されないため、再読み込みすると元に戻ります。新規登録も成功しますが、ログイン後はデモユーザーになります。
+- データは `backend/repositories/mock/_data.py` の固定データです。作成・更新・削除は成功レスポンスを返しますが保存されないため、再読み込みすると元に戻ります。新規登録は確認コードの入力画面まで進みますが、アカウントが保存されないため完了できません（デモユーザーでログインしてください）。
 - メールは送信されず、内容が Vercel の Function ログに出ます。
 - `GET /api/health` で `{"data": "mock", "mail": "log"}` のように現在のモードを確認できます。
 - `GET /api/health` は DB に接続しない liveness です。DB への疎通（`select 1`）まで確認したい監視には `GET /api/health/ready` を使います（DB に届かなければ `503`、モックでは `{"db": "skipped"}`）。
@@ -156,7 +170,7 @@ docker compose up --build
 | 本番の依存 | ローカルでの代替 |
 | --- | --- |
 | Supabase Postgres | `db`（postgres:17）。`migrate` が `supabase/migrations` の未適用分を起動時に適用 |
-| Resend（メール通知） | 再現しない。送信内容は API ログに出力（`docker compose logs -f api`）。確認リンク・再設定リンクもログから開けます |
+| Resend（メール通知） | 再現しない。送信内容は API ログに出力（`docker compose logs -f api`）。新規登録の確認コードや再設定リンクもログで確認できます |
 | Gemini | キー未設定のためルールベースのインサイト（`GEMINI_API_KEY` を渡せば実 API） |
 | Vercel Cron | 手動実行（下記。送信対象の判定までは動き、メールはログ出力） |
 

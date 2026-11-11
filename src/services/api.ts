@@ -72,17 +72,18 @@ export const api = {
     return post('/api/auth/login', { email, password });
   },
 
-  /** Only available while the server runs with DEMO_LOGIN=true (the default). */
-  demoLogin(): Promise<{ user: User }> {
-    return post('/api/auth/demo-login');
-  },
-
-  getHealth(): Promise<{ status: string; env: string; data: 'postgres' | 'mock'; mail: string; demo_login: boolean }> {
-    return request('/api/health');
-  },
-
-  register(data: { name: string; email: string; password: string; title?: string }): Promise<{ user: User; message: string }> {
+  /** Step 1 of sign-up: creates the account unverified and mails a 6-digit code. */
+  register(data: { email: string; password: string }): Promise<{ email: string; message: string }> {
     return post('/api/auth/register', data);
+  },
+
+  /** Step 2 of sign-up: checks the code and signs in. */
+  verifySignupCode(email: string, code: string): Promise<{ user: User }> {
+    return post('/api/auth/register/verify', { email, code });
+  },
+
+  resendSignupCode(email: string): Promise<Message> {
+    return post('/api/auth/register/resend', { email });
   },
 
   getMe(): Promise<{ user: User }> {
@@ -95,14 +96,6 @@ export const api = {
 
   logout(): Promise<{ success: boolean }> {
     return post('/api/auth/logout');
-  },
-
-  verifyEmail(token: string): Promise<{ user: User | null; message: string }> {
-    return post('/api/auth/verify-email', { token });
-  },
-
-  resendVerificationEmail(): Promise<Message> {
-    return post('/api/auth/verify-email/resend');
   },
 
   forgotPassword(email: string): Promise<Message> {

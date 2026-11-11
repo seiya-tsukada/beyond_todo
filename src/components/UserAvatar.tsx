@@ -6,8 +6,13 @@ interface UserAvatarProps {
   className?: string;
 }
 
+/** The user's name, or the part of the address before "@" (name is optional). */
+export function displayName(user: User | null): string {
+  return user?.name?.trim() || user?.email.split('@')[0] || '';
+}
+
 export function UserAvatar({ user, className = 'w-7 h-7 text-xs' }: UserAvatarProps) {
-  const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
+  const initial = (displayName(user) || '?').charAt(0).toUpperCase();
   return (
     <span
       aria-hidden="true"

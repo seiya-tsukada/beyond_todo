@@ -12,7 +12,8 @@ export type StakeholderRelationship = 'Customer' | 'Partner' | 'Family' | 'Colle
 export interface User {
   id: string;
   email: string;
-  name: string;
+  /** Not asked at sign-up, so it may be empty: show it with displayName() */
+  name: string | null;
   title?: string | null;
   email_verified_at: string | null;
   notify_weekly_review: boolean;

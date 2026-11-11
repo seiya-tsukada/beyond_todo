@@ -62,6 +62,16 @@ def get_conn() -> Iterator[Conn]:
         yield conn
 
 
+def commit(conn: Conn | None) -> None:
+    """Commit now, so the work survives an error response that rolls the rest back.
+
+    Used for state that must persist even when the request fails, such as a
+    counted wrong guess of a one-time code. No-op for the mock backend.
+    """
+    if conn is not None:
+        conn.commit()
+
+
 def table(name: str) -> sql.Composed:
     return sql.SQL("{}.{}").format(sql.Identifier(SCHEMA), sql.Identifier(name))
 

@@ -15,6 +15,11 @@ from .mailer import EmailMessage, send_email
 APP_NAME = "Beyond TODO."
 
 
+def display_name(user: dict) -> str:
+    """Name for greetings: the user's name, or the local part of the address (name is optional)."""
+    return (user.get("name") or "").strip() or str(user["email"]).split("@")[0]
+
+
 def _link(**params: str) -> str:
     return f"{get_settings().app_url}/?{urlencode(params)}"
 
@@ -40,21 +45,24 @@ def _layout(
     )
 
 
-def send_verification_email(to: str, name: str, token: str) -> bool:
-    url = _link(verify_token=token)
+def send_signup_code_email(to: str, name: str, code: str) -> bool:
     return send_email(
         EmailMessage(
             to=to,
-            subject=f"【{APP_NAME}】メールアドレスの確認",
+            subject=f"【{APP_NAME}】確認コード: {code}",
             text=f"{name} さん\n\n{APP_NAME} へのご登録ありがとうございます。\n"
-            f"以下のリンクからメールアドレスを確認してください（24時間有効）。\n\n{url}\n",
+            f"登録画面に次の確認コードを入力してください（10分間有効）。\n\n    {code}\n\n"
+            "心当たりがない場合は、このメールを破棄してください。アカウントは有効になりません。\n",
             html=_layout(
-                "メールアドレスの確認",
+                "確認コード",
                 [
                     f"{escape(name)} さん、{APP_NAME} へのご登録ありがとうございます。",
-                    "以下のボタンからメールアドレスを確認してください。リンクの有効期限は24時間です。",
+                    "登録画面に次の確認コードを入力してください。コードの有効期限は10分です。",
+                    '<span style="display:inline-block;font-family:ui-monospace,Menlo,monospace;'
+                    "font-size:28px;font-weight:700;letter-spacing:8px;padding:12px 20px;"
+                    f'background:#f4f4f5;border-radius:8px">{escape(code)}</span>',
+                    "心当たりがない場合は、このメールを破棄してください。アカウントは有効になりません。",
                 ],
-                ("メールアドレスを確認する", url),
             ),
         )
     )
