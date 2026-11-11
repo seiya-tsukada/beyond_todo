@@ -36,8 +36,6 @@ APP_ENVS: tuple[AppEnv, ...] = ("local", "production")
 DataBackend = Literal["postgres", "mock"]
 MailBackend = Literal["resend", "log"]
 
-DEFAULT_MAIL_FROM = "Beyond TODO. <onboarding@resend.dev>"
-
 
 def _bool(value: str | None, default: bool) -> bool:
     if value is None or value == "":
@@ -105,7 +103,7 @@ def _validate_production(s: Settings) -> None:
     if s.data_backend == "postgres":
         required.append(("DATABASE_URL", s.database_url))
     if s.mail_backend == "resend":
-        required.append(("RESEND_API_KEY", s.resend_api_key))
+        required += [("RESEND_API_KEY", s.resend_api_key), ("MAIL_FROM", s.mail_from)]
     missing = [name for name, value in required if not value]
     problems = [f"missing {', '.join(missing)}"] if missing else []
     if s.app_url and not s.app_url.startswith("https://"):
@@ -136,9 +134,7 @@ def get_settings() -> Settings:
         session_ttl_days=int(os.environ.get("SESSION_TTL_DAYS", "30")),
         timezone=ZoneInfo(os.environ.get("APP_TIMEZONE", "Asia/Tokyo")),
         resend_api_key=os.environ.get("RESEND_API_KEY") or None,
-        # Resend's shared sender works without a verified domain, but only delivers to
-        # the Resend account owner's address. Set MAIL_FROM once a domain is verified.
-        mail_from=os.environ.get("MAIL_FROM") or DEFAULT_MAIL_FROM,
+        mail_from=(os.environ.get("MAIL_FROM") or "").strip(),
         gemini_api_key=os.environ.get("GEMINI_API_KEY") or None,
         gemini_model=os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
         cron_secret=os.environ.get("CRON_SECRET") or None,

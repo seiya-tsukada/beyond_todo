@@ -91,9 +91,16 @@ def test_local_does_not_send_email(env, monkeypatch):
     assert send_email(EmailMessage(to="a@example.com", subject="s", html="<p>h</p>", text="t"))
 
 
-def test_mail_from_defaults_to_resend_shared_sender(env):
-    env.delenv("MAIL_FROM", raising=False)
-    assert get_settings().mail_from == "Beyond TODO. <onboarding@resend.dev>"
-    get_settings.cache_clear()
+
+def test_mail_from_is_read_from_env(env):
     env.setenv("MAIL_FROM", "Beyond TODO. <info@beyond-todo.app>")
     assert get_settings().mail_from == "Beyond TODO. <info@beyond-todo.app>"
+
+
+def test_resend_requires_mail_from(env):
+    env.setenv("APP_ENV", "production")
+    env.setenv("DATA_BACKEND", "mock")
+    env.setenv("APP_URL", "https://beyond-todo.example")
+    env.setenv("RESEND_API_KEY", "re_test")
+    with pytest.raises(RuntimeError, match="missing MAIL_FROM"):
+        get_settings()
